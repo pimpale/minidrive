@@ -1,4 +1,5 @@
-use cgmath::Point3;
+use nalgebra::{Point3, Vector3};
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
@@ -36,10 +37,9 @@ use winit::window::{Window, WindowBuilder};
 
 mod camera;
 mod handle_user_input;
-mod rendering3d;
-mod scene;
+mod objectbuilder;
+mod render_system;
 mod shader;
-mod util;
 mod vertex;
 
 use crate::vertex::mVertex;
@@ -68,8 +68,11 @@ fn main() {
 
     let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
-    let (device, queue) =
-        rendering3d::get_device(instance.clone(), device_extensions, surface.clone());
+    let (device, queue) = render_system::rendering3d::get_device(
+        instance.clone(),
+        device_extensions,
+        surface.clone(),
+    );
 
     //Print some info about the device currently being used
     println!(
@@ -88,55 +91,62 @@ fn main() {
         .unwrap();
 
     let rd = vec![
-        [0.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0],
-        [2.0, 0.0, 0.0],
-        [3.0, 0.0, 0.0],
-        [4.0, 0.0, 0.0],
-        [5.0, 0.0, 0.0],
-        [6.0, 0.0, 0.0],
-        [7.0, 0.0, 0.0],
-        [8.0, 0.0, 0.0],
-        [9.0, 0.0, 0.0],
-        [10.0, 0.0, 0.0],
-        [11.0, 0.0, 0.0],
-        [12.0, 0.0, 0.0],
-        [13.0, 0.0, 0.0],
-        [14.0, 0.0, 0.0],
-        [15.0, 0.0, 0.0],
-        [15.0, 0.0, 1.0],
-        [15.0, 0.0, 2.0],
-        [15.0, 0.0, 3.0],
-        [15.0, 0.0, 4.0],
-        [15.0, 0.0, 5.0],
-        [15.0, 0.0, 6.0],
-        [15.0, 1.0, 7.0],
-        [15.0, 0.0, 8.0],
-        [15.0, 0.0, 9.0],
-        [15.0, 0.0, 10.0],
-        [15.0, 0.0, 11.0],
-        [15.0, 0.0, 12.0],
-        [15.0, 0.0, 13.0],
-        [15.0, 0.0, 14.0],
-        [15.0, 0.0, 15.0],
+        [0.0, 0.0, 0.0].into(),
+        [1.0, 0.0, 0.0].into(),
+        [2.0, 0.0, 0.0].into(),
+        [3.0, 0.0, 0.0].into(),
+        [4.0, 0.0, 0.0].into(),
+        [5.0, 0.0, 0.0].into(),
+        [6.0, 0.0, 0.0].into(),
+        [7.0, 0.0, 0.0].into(),
+        [8.0, 0.0, 0.0].into(),
+        [9.0, 0.0, 0.0].into(),
+        [10.0, 0.0, 0.0].into(),
+        [11.0, 0.0, 0.0].into(),
+        [12.0, 0.0, 0.0].into(),
+        [13.0, 0.0, 0.0].into(),
+        [14.0, 0.0, 0.0].into(),
+        [15.0, 0.0, 0.0].into(),
+        [15.0, 0.0, 1.0].into(),
+        [15.0, 0.0, 2.0].into(),
+        [15.0, 0.0, 3.0].into(),
+        [15.0, 0.0, 4.0].into(),
+        [15.0, 0.0, 5.0].into(),
+        [15.0, 0.0, 6.0].into(),
+        [15.0, 0.0, 7.0].into(),
+        [15.0, 0.0, 8.0].into(),
+        [15.0, 0.0, 9.0].into(),
+        [15.0, 0.0, 10.0].into(),
+        [15.0, 0.0, 11.0].into(),
+        [15.0, 0.0, 12.0].into(),
+        [15.0, 0.0, 13.0].into(),
+        [15.0, 0.0, 14.0].into(),
+        [15.0, 0.0, 15.0].into(),
     ];
-
-    // scene
-    let scene = scene::Scene::new(vec![
-        scene::Object::cube(0, 0, 0),
-        scene::Object::flat_polyline(
-            rd.clone(),
-            1.0,
-        ),
-        scene::Object::flat_polyline(
-            rd.iter().map(|&[x,y,z]| [x,y+0.1,z]).collect(),
-            0.1,
-        ),
-    ]);
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-    let mut renderer = rendering3d::Renderer::new(
+    // scene
+    let mut scene = render_system::scene::Scene::new(
+        memory_allocator.clone(),
+        HashMap::from([
+            (
+                "road",
+                objectbuilder::flat_polyline(rd.clone(), 1.0, [0.5, 0.5, 0.5, 1.0]),
+            ),
+            (
+                "road2",
+                objectbuilder::flat_polyline(
+                    rd.iter().map(|v| v + Vector3::new(0.0, 0.1, 0.0)).collect(),
+                    0.1,
+                    [1.0, 1.0, 0.0, 1.0],
+                ),
+            ),
+            ("cube", objectbuilder::unitcube()),
+        ]),
+    );
+
+    let mut renderer = render_system::rendering3d::Renderer::new(
         vec![vs, fs],
         surface.clone(),
         queue.clone(),
@@ -168,6 +178,13 @@ fn main() {
             // Handle keyboard input
             keyboard_state.handle_keyboard_input(input);
         }
+        Event::WindowEvent {
+            event: WindowEvent::Resized(size),
+            ..
+        } => {
+            // Update the camera
+            camera.set_screen(size.width, size.height);
+        }
         Event::RedrawEventsCleared => {
             // Update the camera
             keyboard_state.apply_to_camera(&mut camera);
@@ -181,30 +198,13 @@ fn main() {
                 start_time = std::time::Instant::now();
             }
 
-            let vertexes = scene.vertexes();
-
-            let vertex_buffer = {
-                Buffer::from_iter(
-                    memory_allocator.clone(),
-                    BufferCreateInfo {
-                        usage: BufferUsage::VERTEX_BUFFER,
-                        ..Default::default()
-                    },
-                    AllocationCreateInfo {
-                        memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                            | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                        ..Default::default()
-                    },
-                    vertexes.into_iter(),
-                )
-                .unwrap()
-            };
+            let vertex_buffers = scene.vertex_buffers();
 
             let push_data = shader::vert::PushConstantData {
                 mvp: camera.mvp().into(),
             };
 
-            renderer.render(vertex_buffer, push_data);
+            renderer.render([vertex_buffers], push_data);
         }
         _ => (),
     });

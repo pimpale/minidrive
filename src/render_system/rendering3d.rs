@@ -394,9 +394,10 @@ impl<T> Renderer<T> {
         self.framebuffers = new_framebuffers;
     }
 
-    pub fn render<Pc>(&mut self, vertex_buffer: Subbuffer<[T]>, push_data: Pc)
+    pub fn render<Pc, VB>(&mut self, vertex_buffers: VB, push_data: Pc)
     where
         Pc: BufferContents,
+        VB: IntoIterator<Item = Subbuffer<[T]>>,
     {
         // Do not draw frame when screen dimensions are zero.
         // On Windows, this can occur from minimizing the application.
@@ -412,7 +413,6 @@ impl<T> Renderer<T> {
         }
         // free memory
         self.previous_frame_end.as_mut().unwrap().cleanup_finished();
-
 
         // Whenever the window resizes we need to recreate everything dependent on the window size.
         // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
@@ -439,7 +439,6 @@ impl<T> Renderer<T> {
         if suboptimal {
             self.wdd_needs_rebuild = true;
         }
-
 
         // In order to draw, we have to build a *command buffer*. The command buffer object holds
         // the list of commands that are going to be executed.
@@ -471,17 +470,23 @@ impl<T> Renderer<T> {
             .unwrap()
             .bind_pipeline_graphics(self.pipeline.clone())
             .unwrap()
-            .bind_vertex_buffers(0, vertex_buffer.clone())
-            .unwrap()
             .push_constants(self.pipeline.layout().clone(), 0, push_data)
-            .unwrap()
-            .draw(vertex_buffer.len() as u32, 1, 0, 0)
-            .unwrap()
-            // We leave the render pass by calling `draw_end`. Note that if we had multiple
-            // subpasses we could have called `next_inline` (or `next_secondary`) to jump to the
-            // next subpass.
-            .end_render_pass(Default::default())
             .unwrap();
+
+        // for each vertex buffer, bind it and draw
+        for vertex_buffer in vertex_buffers {
+            let vertex_count = vertex_buffer.len() as u32;
+            builder
+                .bind_vertex_buffers(0, vertex_buffer)
+                .unwrap()
+                .draw(vertex_count, 1, 0, 0)
+                .unwrap();
+        }
+
+        // We leave the render pass by calling `draw_end`. Note that if we had multiple
+        // subpasses we could have called `next_inline` (or `next_secondary`) to jump to the
+        // next subpass.
+        builder.end_render_pass(Default::default()).unwrap();
 
         let command_buffer = builder.build().unwrap();
 

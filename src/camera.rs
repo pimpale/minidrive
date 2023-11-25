@@ -1,7 +1,10 @@
-use cgmath::{Angle, Deg, InnerSpace, Matrix4, Point3, Rad, Vector3};
+use nalgebra::{Matrix4, Point3, Vector3};
+
+fn deg2rad(deg: f32) -> f32 {
+    deg * std::f32::consts::PI / 180.0
+}
 
 #[allow(dead_code)]
-
 pub enum CameraMovementDir {
     Forward,
     Backward,
@@ -39,8 +42,8 @@ pub struct Camera {
     worldup: Vector3<f32>,
 
     // pitch and yaw values
-    pitch: Rad<f32>,
-    yaw: Rad<f32>,
+    pitch: f32,
+    yaw: f32,
 
     // relative directions
     dirs: DirVecs,
@@ -50,16 +53,16 @@ pub struct Camera {
 }
 
 impl DirVecs {
-    fn new(worldup: Vector3<f32>, pitch: Rad<f32>, yaw: Rad<f32>) -> DirVecs {
-        let front = Vector3 {
-            x: yaw.cos() * pitch.cos(),
-            y: pitch.sin(),
-            z: yaw.sin() * pitch.cos(),
-        }
+    fn new(worldup: Vector3<f32>, pitch: f32, yaw: f32) -> DirVecs {
+        let front = Vector3::new(
+            yaw.cos() * pitch.cos(),
+            pitch.sin(),
+            yaw.sin() * pitch.cos(),
+        )
         .normalize();
         // get other vectors
-        let right = front.cross(worldup).normalize();
-        let up = right.cross(front).normalize();
+        let right = front.cross(&worldup).normalize();
+        let up = right.cross(&front).normalize();
         // return values
         DirVecs { front, right, up }
     }
@@ -67,10 +70,10 @@ impl DirVecs {
 
 impl Camera {
     pub fn new(location: Point3<f32>, screen_x: u32, screen_y: u32) -> Camera {
-        let pitch = Rad::from(Deg(0.0));
-        let yaw = Rad::from(Deg(-90.0));
+        let pitch = 0.0;
+        let yaw = deg2rad(-90.0);
 
-        let worldup = -Vector3::unit_y();
+        let worldup = Vector3::new(0.0, -1.0, 0.0);
 
         Camera {
             screen_x,
@@ -85,8 +88,7 @@ impl Camera {
     }
 
     pub fn mvp(&self) -> Matrix4<f32> {
-
-        let view = Matrix4::look_at_rh(self.loc, self.loc - self.dirs.front, self.worldup);
+        let view = Matrix4::look_at_rh(&self.loc, &(self.loc - self.dirs.front), &self.worldup);
         self.projection * view
     }
 
@@ -107,7 +109,7 @@ impl Camera {
     }
 
     pub fn dir_rotate(&mut self, dir: CameraRotationDir) {
-        let rotval = Rad(0.02);
+        let rotval = 0.02;
 
         match dir {
             CameraRotationDir::Left => self.yaw += rotval,
@@ -116,10 +118,10 @@ impl Camera {
             CameraRotationDir::Downward => self.pitch += rotval,
         }
 
-        if self.pitch > Deg(89.0).into() {
-            self.pitch = Deg(89.0).into();
-        } else if self.pitch < Deg(-89.0).into() {
-            self.pitch = Deg(-89.0).into();
+        if self.pitch > deg2rad(89.0).into() {
+            self.pitch = deg2rad(89.0).into();
+        } else if self.pitch < deg2rad(-89.0).into() {
+            self.pitch = deg2rad(-89.0).into();
         }
         // recalculate camera directions
         self.dirs = DirVecs::new(self.worldup, self.pitch, self.yaw);
@@ -133,6 +135,6 @@ impl Camera {
 
     fn gen_projection(screen_x: u32, screen_y: u32) -> Matrix4<f32> {
         let aspect_ratio = screen_x as f32 / screen_y as f32;
-        cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), aspect_ratio, 0.01, 100.0)
+        Matrix4::new_perspective(aspect_ratio, deg2rad(90.0), 0.01, 100.0)
     }
 }
