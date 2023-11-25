@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo,
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions,
-        DeviceOwned, Queue, QueueCreateInfo, QueueFlags,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned,
+        Queue, QueueCreateInfo, QueueFlags,
     },
     format::Format,
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
@@ -21,7 +21,7 @@ use vulkano::{
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
+            vertex_input::{Vertex, VertexBufferDescription, VertexDefinition},
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
@@ -35,8 +35,6 @@ use vulkano::{
     Validated, VulkanError,
 };
 use winit::window::Window;
-
-use crate::vertex::mVertex;
 
 pub fn get_device(
     instance: Arc<Instance>,
@@ -127,6 +125,7 @@ fn window_size_dependent_setup(
     images: &[Arc<Image>],
     render_pass: Arc<RenderPass>,
     stages: Vec<EntryPoint>,
+    vertex_buffer_descriptions: &[VertexBufferDescription],
 ) -> (Arc<GraphicsPipeline>, Vec<Arc<Framebuffer>>) {
     // validate stages
     assert!(stages.len() > 0, "no shader stages provided");
@@ -176,7 +175,7 @@ fn window_size_dependent_setup(
     // driver to optimize things, at the cost of slower window resizes.
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
     let pipeline = {
-        let vertex_input_state = [mVertex::per_vertex()]
+        let vertex_input_state = vertex_buffer_descriptions
             .definition(&vs.info().input_interface)
             .unwrap();
         let stages: Vec<_> = stages
@@ -289,7 +288,7 @@ fn create_swapchain(
     .unwrap()
 }
 
-pub struct Renderer {
+pub struct Renderer<Vert> {
     stages: Vec<EntryPoint>,
     surface: Arc<Surface>,
     device: Arc<Device>,
@@ -300,19 +299,27 @@ pub struct Renderer {
     swapchain: Arc<Swapchain>,
     pipeline: Arc<GraphicsPipeline>,
     framebuffers: Vec<Arc<Framebuffer>>,
+    vertex_buffer_descriptions: Vec<VertexBufferDescription>,
     wdd_needs_rebuild: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
+    phantom: std::marker::PhantomData<Vert>,
 }
-impl Renderer {
+
+impl<T> Renderer<T> {
     pub fn new(
         stages: Vec<EntryPoint>,
         surface: Arc<Surface>,
         queue: Arc<Queue>,
         memory_allocator: Arc<StandardMemoryAllocator>,
-    ) -> Renderer {
+    ) -> Renderer<T>
+    where
+        T: Vertex,
+    {
         let device = memory_allocator.device().clone();
 
         let (swapchain, images) = create_swapchain(device.clone(), surface.clone());
+
+        let vertex_buffer_descriptions = [T::per_vertex()];
 
         let render_pass = vulkano::single_pass_renderpass!(
             device.clone(),
@@ -342,6 +349,7 @@ impl Renderer {
             &images,
             render_pass.clone(),
             stages.clone(),
+            &vertex_buffer_descriptions,
         );
 
         Renderer {
@@ -360,16 +368,12 @@ impl Renderer {
             memory_allocator,
             render_pass,
             wdd_needs_rebuild: false,
+            vertex_buffer_descriptions: vertex_buffer_descriptions.to_vec(),
+            phantom: std::marker::PhantomData,
         }
     }
 
-    pub fn rebuild(
-        &mut self,
-        extent: [u32; 2],
-        memory_allocator: Arc<StandardMemoryAllocator>,
-        stages: Vec<EntryPoint>,
-        render_pass: Arc<RenderPass>,
-    ) {
+    pub fn rebuild(&mut self, extent: [u32; 2]) {
         let (new_swapchain, new_images) = self
             .swapchain
             .recreate(SwapchainCreateInfo {
@@ -379,13 +383,18 @@ impl Renderer {
             .expect("failed to recreate swapchain");
 
         self.swapchain = new_swapchain;
-        let (new_pipeline, new_framebuffers) =
-            window_size_dependent_setup(memory_allocator, &new_images, render_pass, stages);
+        let (new_pipeline, new_framebuffers) = window_size_dependent_setup(
+            self.memory_allocator.clone(),
+            &new_images,
+            self.render_pass.clone(),
+            self.stages.clone(),
+            &self.vertex_buffer_descriptions,
+        );
         self.pipeline = new_pipeline;
         self.framebuffers = new_framebuffers;
     }
 
-    pub fn render<Pc>(&mut self, vertexes: Vec<mVertex>, push_data: Pc)
+    pub fn render<Pc>(&mut self, vertex_buffer: Subbuffer<[T]>, push_data: Pc)
     where
         Pc: BufferContents,
     {
@@ -401,26 +410,17 @@ impl Renderer {
         if extent[0] == 0 || extent[1] == 0 {
             return;
         }
-
-        let vertex_buffer = {
-            Buffer::from_iter(
-                self.memory_allocator.clone(),
-                BufferCreateInfo {
-                    usage: BufferUsage::VERTEX_BUFFER,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                },
-                vertexes.into_iter(),
-            )
-            .unwrap()
-        };
-
         // free memory
         self.previous_frame_end.as_mut().unwrap().cleanup_finished();
+
+
+        // Whenever the window resizes we need to recreate everything dependent on the window size.
+        // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
+        if self.wdd_needs_rebuild {
+            self.rebuild(extent);
+            self.wdd_needs_rebuild = false;
+            println!("rebuilt swapchain");
+        }
 
         // This operation returns the index of the image that we are allowed to draw upon.
         let (image_index, suboptimal, acquire_future) =
@@ -429,6 +429,7 @@ impl Renderer {
             {
                 Ok(r) => r,
                 Err(VulkanError::OutOfDate) => {
+                    println!("swapchain out of date (at acquire)");
                     self.wdd_needs_rebuild = true;
                     return;
                 }
@@ -439,17 +440,6 @@ impl Renderer {
             self.wdd_needs_rebuild = true;
         }
 
-        // Whenever the window resizes we need to recreate everything dependent on the window size.
-        // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
-        if self.wdd_needs_rebuild {
-            self.rebuild(
-                extent,
-                self.memory_allocator.clone(),
-                self.stages.clone(),
-                self.render_pass.clone(),
-            );
-            self.wdd_needs_rebuild = false;
-        }
 
         // In order to draw, we have to build a *command buffer*. The command buffer object holds
         // the list of commands that are going to be executed.
@@ -520,6 +510,7 @@ impl Renderer {
             }
             Err(VulkanError::OutOfDate) => {
                 self.wdd_needs_rebuild = true;
+                println!("swapchain out of date (at flush)");
                 self.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
             }
             Err(e) => {

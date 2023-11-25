@@ -36,10 +36,11 @@ use winit::window::{Window, WindowBuilder};
 
 mod camera;
 mod grid;
-mod rendering;
+mod rendering3d;
 mod shader;
 mod util;
 mod vertex;
+mod handle_user_input;
 
 use camera::*;
 use grid::*;
@@ -71,7 +72,7 @@ fn main() {
     let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
     let (device, queue) =
-        rendering::get_device(instance.clone(), device_extensions, surface.clone());
+        rendering3d::get_device(instance.clone(), device_extensions, surface.clone());
 
     //Print some info about the device currently being used
     println!(
@@ -89,9 +90,7 @@ fn main() {
         .entry_point("main")
         .unwrap();
 
-    let mut camera = Camera::new(Point3::new(0.0, 0.0, -1.0), 50, 50);
 
-    camera.set_screen(window.inner_size().width, window.inner_size().height);
 
     //Compute stuff
 
@@ -130,12 +129,17 @@ fn main() {
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-    let mut renderer = rendering::Renderer::new(
+    let mut renderer = rendering3d::Renderer::new(
         vec![vs, fs],
         surface.clone(),
         queue.clone(),
         memory_allocator.clone(),
     );
+
+    let mut camera = Camera::new(Point3::new(0.0, 0.0, -1.0), 50, 50);
+    camera.set_screen(window.inner_size().width, window.inner_size().height);
+
+    let mut keyboard_state = handle_user_input::KeyboardState::new();
 
     let mut start_time = std::time::Instant::now();
     let mut frame_count = 0;
@@ -151,24 +155,14 @@ fn main() {
             event: WindowEvent::KeyboardInput { input, .. },
             ..
         } => {
-            if let Some(kc) = input.virtual_keycode {
-                match kc {
-                    VirtualKeyCode::W => camera.dir_move(CameraMovementDir::Forward),
-                    VirtualKeyCode::A => camera.dir_move(CameraMovementDir::Left),
-                    VirtualKeyCode::S => camera.dir_move(CameraMovementDir::Backward),
-                    VirtualKeyCode::D => camera.dir_move(CameraMovementDir::Right),
-                    VirtualKeyCode::Q => camera.dir_move(CameraMovementDir::Upward),
-                    VirtualKeyCode::E => camera.dir_move(CameraMovementDir::Downward),
-
-                    VirtualKeyCode::Up => camera.dir_rotate(CameraRotationDir::Upward),
-                    VirtualKeyCode::Left => camera.dir_rotate(CameraRotationDir::Left),
-                    VirtualKeyCode::Down => camera.dir_rotate(CameraRotationDir::Downward),
-                    VirtualKeyCode::Right => camera.dir_rotate(CameraRotationDir::Right),
-                    _ => (),
-                }
-            }
+            // Handle keyboard input
+            keyboard_state.handle_keyboard_input(input);
         }
         Event::RedrawEventsCleared => {
+            // Update the camera
+            keyboard_state.apply_to_camera(&mut camera);
+
+            // print FPS
             frame_count += 1;
             if frame_count > 100 {
                 let elapsed = start_time.elapsed();
@@ -178,11 +172,28 @@ fn main() {
             }
 
             let vertexes = grid_buffer.gen_vertex();
+            let vertex_buffer = {
+                Buffer::from_iter(
+                    memory_allocator.clone(),
+                    BufferCreateInfo {
+                        usage: BufferUsage::VERTEX_BUFFER,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo {
+                        memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                            | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                        ..Default::default()
+                    },
+                    vertexes.into_iter(),
+                )
+                .unwrap()
+            };
+
             let push_data = shader::vert::PushConstantData {
                 mvp: camera.mvp().into(),
             };
 
-            renderer.render(vertexes, push_data);
+            renderer.render(vertex_buffer, push_data);
         }
         _ => (),
     });

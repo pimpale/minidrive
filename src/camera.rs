@@ -107,7 +107,7 @@ impl Camera {
     }
 
     pub fn dir_rotate(&mut self, dir: CameraRotationDir) {
-        let rotval = Rad(0.05);
+        let rotval = Rad(0.02);
 
         match dir {
             CameraRotationDir::Left => self.yaw -= rotval,
