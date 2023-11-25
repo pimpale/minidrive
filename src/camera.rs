@@ -70,7 +70,7 @@ impl Camera {
         let pitch = Rad::from(Deg(0.0));
         let yaw = Rad::from(Deg(-90.0));
 
-        let worldup = Vector3::unit_y();
+        let worldup = -Vector3::unit_y();
 
         Camera {
             screen_x,
@@ -110,10 +110,10 @@ impl Camera {
         let rotval = Rad(0.02);
 
         match dir {
-            CameraRotationDir::Left => self.yaw -= rotval,
-            CameraRotationDir::Right => self.yaw += rotval,
-            CameraRotationDir::Upward => self.pitch += rotval,
-            CameraRotationDir::Downward => self.pitch -= rotval,
+            CameraRotationDir::Left => self.yaw += rotval,
+            CameraRotationDir::Right => self.yaw -= rotval,
+            CameraRotationDir::Upward => self.pitch -= rotval,
+            CameraRotationDir::Downward => self.pitch += rotval,
         }
 
         if self.pitch > Deg(89.0).into() {
