@@ -12,9 +12,11 @@ pub struct Scene<K, Vertex> {
     vertex_buffer_needs_update: bool,
 }
 
+#[allow(dead_code)]
 impl<K, Vertex> Scene<K, Vertex>
 where
     Vertex: Clone + BufferContents,
+    K: std::cmp::Eq + std::hash::Hash,
 {
     pub fn new(
         memory_allocator: Arc<dyn MemoryAllocator>,
@@ -26,6 +28,25 @@ where
             memory_allocator,
             vertex_buffer_needs_update: false,
         }
+    }
+
+    pub fn add_object(&mut self, key: K, object: Vec<Vertex>) {
+        self.objects.insert(key, object);
+        self.vertex_buffer_needs_update = true;
+    }
+
+    pub fn remove_object(&mut self, key: K) {
+        self.objects.remove(&key);
+        self.vertex_buffer_needs_update = true;
+    }
+
+    pub fn update_object(&mut self, key: K, object: Vec<Vertex>) {
+        self.objects.insert(key, object);
+        self.vertex_buffer_needs_update = true;
+    }
+
+    pub fn objects(&self) -> &HashMap<K, Vec<Vertex>> {
+        &self.objects
     }
 
     pub fn vertex_buffers(&mut self) -> Subbuffer<[Vertex]> {

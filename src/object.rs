@@ -1,4 +1,4 @@
-use nalgebra::{Point3, Vector3};
+use nalgebra::{Point3, Vector3, Transform3};
 
 use crate::vertex::mVertex as Vertex;
 
@@ -117,4 +117,13 @@ pub fn cuboid(loc: Point3<f32>, dims: Vector3<f32>) -> Vec<Vertex> {
 
 pub fn unitcube() -> Vec<Vertex> {
     cuboid(Point3::new(0.0, 0.0, 0.0), Vector3::new(1.0, 1.0, 1.0))
+}
+
+pub fn transform(vec: Vec<Vertex>, transform: Transform3<f32>) -> Vec<Vertex> {
+    vec.into_iter()
+        .map(|v| {
+            let loc: Point3<f32> = transform * Point3::from(v.loc);
+            Vertex::new(loc.into(), v.color)
+        })
+        .collect()
 }

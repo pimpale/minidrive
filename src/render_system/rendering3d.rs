@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
+    buffer::{BufferContents, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo,
@@ -13,7 +13,7 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     instance::Instance,
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
@@ -142,7 +142,7 @@ fn window_size_dependent_setup(
             memory_allocator,
             ImageCreateInfo {
                 image_type: ImageType::Dim2d,
-                format: Format::D16_UNORM,
+                format: Format::D32_SFLOAT,
                 extent: images[0].extent(),
                 usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
                 ..Default::default()
@@ -331,7 +331,7 @@ impl<T> Renderer<T> {
                     store_op: Store,
                 },
                 depth_stencil: {
-                    format: Format::D16_UNORM,
+                    format: Format::D32_SFLOAT,
                     samples: 1,
                     load_op: Clear,
                     store_op: DontCare,

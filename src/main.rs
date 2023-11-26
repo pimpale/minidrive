@@ -37,12 +37,76 @@ use winit::window::{Window, WindowBuilder};
 
 mod camera;
 mod handle_user_input;
-mod objectbuilder;
+mod object;
 mod render_system;
 mod shader;
 mod vertex;
+mod entity;
 
-use crate::vertex::mVertex;
+fn build_scene(
+    memory_allocator: Arc<StandardMemoryAllocator>,
+) -> render_system::scene::Scene<String, vertex::mVertex> {
+    let rd = vec![
+        [0.0, 0.0, 0.0].into(),
+        [1.0, 0.0, 0.0].into(),
+        [2.0, 0.0, 0.0].into(),
+        [3.0, 0.0, 0.0].into(),
+        [4.0, 0.0, 0.0].into(),
+        [5.0, 0.0, 0.0].into(),
+        [6.0, 0.0, 0.0].into(),
+        [7.0, 0.0, 0.0].into(),
+        [8.0, 0.0, 0.0].into(),
+        [9.0, 0.0, 0.0].into(),
+        [10.0, 0.0, 0.0].into(),
+        [11.0, 0.0, 0.0].into(),
+        [12.0, 0.0, 0.0].into(),
+        [13.0, 0.0, 0.0].into(),
+        [14.0, 0.0, 0.0].into(),
+        [15.0, 0.0, 0.0].into(),
+        [15.0, 0.0, 1.0].into(),
+        [15.0, 0.0, 2.0].into(),
+        [15.0, 0.0, 3.0].into(),
+        [15.0, 0.0, 4.0].into(),
+        [15.0, 0.0, 5.0].into(),
+        [15.0, 0.0, 6.0].into(),
+        [15.0, 0.0, 7.0].into(),
+        [15.0, 0.0, 8.0].into(),
+        [15.0, 0.0, 9.0].into(),
+        [15.0, 0.0, 10.0].into(),
+        [15.0, 0.0, 11.0].into(),
+        [15.0, 0.0, 12.0].into(),
+        [15.0, 0.0, 13.0].into(),
+        [15.0, 0.0, 14.0].into(),
+        [15.0, 0.0, 15.0].into(),
+    ];
+
+    let g = vec![[0.0, -0.1, -50.0].into(), [0.0, -0.1, 50.0].into()];
+    // scene
+    let mut scene = render_system::scene::Scene::new(
+        memory_allocator.clone(),
+        HashMap::from([
+            (
+                "road".to_owned(),
+                object::flat_polyline(rd.clone(), 1.0, [0.5, 0.5, 0.5, 1.0]),
+            ),
+            (
+                "roadyellowline".to_owned(),
+                object::flat_polyline(
+                    rd.iter().map(|v| v + Vector3::new(0.0, 0.1, 0.0)).collect(),
+                    0.1,
+                    [1.0, 1.0, 0.0, 1.0],
+                ),
+            ),
+            (
+                "ground".to_owned(),
+                object::flat_polyline(g.clone(), 50.0, [0.3, 0.5, 0.3, 1.0]),
+            ),
+            ("cube".to_owned(), object::unitcube()),
+        ]),
+    );
+
+    return scene;
+}
 
 fn main() {
     let library = VulkanLibrary::new().unwrap();
@@ -90,61 +154,7 @@ fn main() {
         .entry_point("main")
         .unwrap();
 
-    let rd = vec![
-        [0.0, 0.0, 0.0].into(),
-        [1.0, 0.0, 0.0].into(),
-        [2.0, 0.0, 0.0].into(),
-        [3.0, 0.0, 0.0].into(),
-        [4.0, 0.0, 0.0].into(),
-        [5.0, 0.0, 0.0].into(),
-        [6.0, 0.0, 0.0].into(),
-        [7.0, 0.0, 0.0].into(),
-        [8.0, 0.0, 0.0].into(),
-        [9.0, 0.0, 0.0].into(),
-        [10.0, 0.0, 0.0].into(),
-        [11.0, 0.0, 0.0].into(),
-        [12.0, 0.0, 0.0].into(),
-        [13.0, 0.0, 0.0].into(),
-        [14.0, 0.0, 0.0].into(),
-        [15.0, 0.0, 0.0].into(),
-        [15.0, 0.0, 1.0].into(),
-        [15.0, 0.0, 2.0].into(),
-        [15.0, 0.0, 3.0].into(),
-        [15.0, 0.0, 4.0].into(),
-        [15.0, 0.0, 5.0].into(),
-        [15.0, 0.0, 6.0].into(),
-        [15.0, 0.0, 7.0].into(),
-        [15.0, 0.0, 8.0].into(),
-        [15.0, 0.0, 9.0].into(),
-        [15.0, 0.0, 10.0].into(),
-        [15.0, 0.0, 11.0].into(),
-        [15.0, 0.0, 12.0].into(),
-        [15.0, 0.0, 13.0].into(),
-        [15.0, 0.0, 14.0].into(),
-        [15.0, 0.0, 15.0].into(),
-    ];
-
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-
-    // scene
-    let mut scene = render_system::scene::Scene::new(
-        memory_allocator.clone(),
-        HashMap::from([
-            (
-                "road",
-                objectbuilder::flat_polyline(rd.clone(), 1.0, [0.5, 0.5, 0.5, 1.0]),
-            ),
-            (
-                "road2",
-                objectbuilder::flat_polyline(
-                    rd.iter().map(|v| v + Vector3::new(0.0, 0.1, 0.0)).collect(),
-                    0.1,
-                    [1.0, 1.0, 0.0, 1.0],
-                ),
-            ),
-            ("cube", objectbuilder::unitcube()),
-        ]),
-    );
 
     let mut renderer = render_system::rendering3d::Renderer::new(
         vec![vs, fs],
@@ -153,7 +163,7 @@ fn main() {
         memory_allocator.clone(),
     );
 
-    let mut camera = camera::Camera::new(
+    let mut camera = camera::PerspectiveCamera::new(
         Point3::new(0.0, 0.0, -1.0),
         window.inner_size().width,
         window.inner_size().height,

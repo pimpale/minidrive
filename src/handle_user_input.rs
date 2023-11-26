@@ -1,6 +1,6 @@
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 
-use crate::camera::{Camera, CameraMovementDir, CameraRotationDir};
+use crate::camera::{PerspectiveCamera, CameraMovementDir, CameraRotationDir};
 
 pub struct KeyboardState {
     w: bool,
@@ -48,7 +48,7 @@ impl KeyboardState {
         }
     }
 
-    pub fn apply_to_camera(&self, camera: &mut Camera) {
+    pub fn apply_to_camera(&self, camera: &mut PerspectiveCamera) {
         if self.w {
             camera.dir_move(CameraMovementDir::Forward);
         }
