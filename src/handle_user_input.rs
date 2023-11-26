@@ -1,18 +1,16 @@
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 
-use crate::camera::{PerspectiveCamera, CameraMovementDir, CameraRotationDir};
-
 pub struct KeyboardState {
-    w: bool,
-    a: bool,
-    s: bool,
-    d: bool,
-    q: bool,
-    e: bool,
-    up: bool,
-    left: bool,
-    down: bool,
-    right: bool,
+    pub w: bool,
+    pub a: bool,
+    pub s: bool,
+    pub d: bool,
+    pub q: bool,
+    pub e: bool,
+    pub up: bool,
+    pub left: bool,
+    pub down: bool,
+    pub right: bool,
 }
 
 impl KeyboardState {
@@ -47,39 +45,5 @@ impl KeyboardState {
             }
         }
     }
-
-    pub fn apply_to_camera(&self, camera: &mut PerspectiveCamera) {
-        if self.w {
-            camera.dir_move(CameraMovementDir::Forward);
-        }
-        if self.a {
-            camera.dir_move(CameraMovementDir::Left);
-        }
-        if self.s {
-            camera.dir_move(CameraMovementDir::Backward);
-        }
-        if self.d {
-            camera.dir_move(CameraMovementDir::Right);
-        }
-        if self.q {
-            camera.dir_move(CameraMovementDir::Upward);
-        }
-        if self.e {
-            camera.dir_move(CameraMovementDir::Downward);
-        }
-        if self.up {
-            camera.dir_rotate(CameraRotationDir::Upward);
-        }
-        if self.down {
-            camera.dir_rotate(CameraRotationDir::Downward);
-        }
-        if self.left {
-            camera.dir_rotate(CameraRotationDir::Left);
-        }
-        if self.right {
-            camera.dir_rotate(CameraRotationDir::Right);
-        }
-    }
-    
 }
 

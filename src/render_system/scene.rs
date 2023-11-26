@@ -36,20 +36,17 @@ where
     }
 
     pub fn remove_object(&mut self, key: K) {
-        self.objects.remove(&key);
-        self.vertex_buffer_needs_update = true;
-    }
-
-    pub fn update_object(&mut self, key: K, object: Vec<Vertex>) {
-        self.objects.insert(key, object);
-        self.vertex_buffer_needs_update = true;
+        let removed = self.objects.remove(&key);
+        if removed.is_some() {
+            self.vertex_buffer_needs_update = true;
+        }
     }
 
     pub fn objects(&self) -> &HashMap<K, Vec<Vertex>> {
         &self.objects
     }
 
-    pub fn vertex_buffers(&mut self) -> Subbuffer<[Vertex]> {
+    pub fn vertex_buffer(&mut self) -> Subbuffer<[Vertex]> {
         if self.vertex_buffer_needs_update {
             self.vertex_buffer =
                 vertex_buffer(self.memory_allocator.clone(), self.objects.values());

@@ -1,4 +1,4 @@
-use nalgebra::{Point3, Vector3, Transform3};
+use nalgebra::{Isometry3, Point3, Vector3};
 
 use crate::vertex::mVertex as Vertex;
 
@@ -119,11 +119,38 @@ pub fn unitcube() -> Vec<Vertex> {
     cuboid(Point3::new(0.0, 0.0, 0.0), Vector3::new(1.0, 1.0, 1.0))
 }
 
-pub fn transform(vec: Vec<Vertex>, transform: Transform3<f32>) -> Vec<Vertex> {
+pub fn transform(vec: Vec<Vertex>, isometry: &Isometry3<f32>) -> Vec<Vertex> {
     vec.into_iter()
         .map(|v| {
-            let loc: Point3<f32> = transform * Point3::from(v.loc);
+            let loc: Point3<f32> = isometry * Point3::from(v.loc);
             Vertex::new(loc.into(), v.color)
         })
         .collect()
+}
+
+// get axis aligned bounding box
+pub fn get_aabb(obj: Vec<Vertex>) -> Vector3<f32> {
+    let mut min = Vector3::new(std::f32::MAX, std::f32::MAX, std::f32::MAX);
+    let mut max = Vector3::new(std::f32::MIN, std::f32::MIN, std::f32::MIN);
+    for v in obj.iter() {
+        if v.loc[0] < min[0] {
+            min[0] = v.loc[0];
+        }
+        if v.loc[1] < min[1] {
+            min[1] = v.loc[1];
+        }
+        if v.loc[2] < min[2] {
+            min[2] = v.loc[2];
+        }
+        if v.loc[0] > max[0] {
+            max[0] = v.loc[0];
+        }
+        if v.loc[1] > max[1] {
+            max[1] = v.loc[1];
+        }
+        if v.loc[2] > max[2] {
+            max[2] = v.loc[2];
+        }
+    }
+    max - min
 }
