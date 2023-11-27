@@ -1,5 +1,5 @@
 use entity::{GameWorld, InteractiveRenderingConfig};
-use nalgebra::{Point3, Vector3};
+use nalgebra::{Point3, Vector3, Isometry};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -108,14 +108,22 @@ fn build_scene(
         ]),
     );
 
-    let world = GameWorld::new(
+    let mut world = GameWorld::new(
         queue,
         memory_allocator,
-        InteractiveRenderingConfig {
+        Some(InteractiveRenderingConfig {
             surface,
             tracking_entity: 0,
-        },
+            camera: Box::new(camera::TrackballCamera::new(Point3::new(0.0, 0.0, -1.0))),
+        }),
     );
+
+    world.add_entity(0, EntityCreationData {
+        cameras: vec![],
+        physics: None,
+        mesh: object::unitcube(),
+        isometry: Isometry3::identity(),
+    });
 
     world
 }
@@ -153,10 +161,10 @@ fn main() {
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-    let mut camera = camera::PerspectiveCamera::new(Point3::new(0.0, 0.0, -1.0));
-
     let mut start_time = std::time::Instant::now();
     let mut frame_count = 0;
+
+    let world = build_scene(queue.clone(), memory_allocator.clone(), surface.clone());
 
     event_loop.run_return(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -165,27 +173,22 @@ fn main() {
         } => {
             *control_flow = ControlFlow::Exit;
         }
-        e @ Event::WindowEvent => {}
+        e @ Event::WindowEvent => {
+            world.handle_event(e);
+        }
         Event::RedrawEventsCleared => {
-            // Update the camera
-            keyboard_state.apply_to_camera(&mut camera);
-
-            // print FPS
+            // print fps
             frame_count += 1;
-            if frame_count > 100 {
-                let elapsed = start_time.elapsed();
-                println!("FPS: {}", (frame_count as f32) / (elapsed.as_secs_f32()));
+            let elapsed = start_time.elapsed();
+            if elapsed.as_secs() >= 1 {
+                println!("fps: {}", frame_count);
                 frame_count = 0;
                 start_time = std::time::Instant::now();
             }
 
-            let vertex_buffers = scene.vertex_buffers();
-
-            let push_data = shader::vert::PushConstantData {
-                mvp: camera.mvp().into(),
-            };
-
-            renderer.render([vertex_buffers], push_data);
+            // game step and render
+            game.step();
+            game.render();
         }
         _ => (),
     });

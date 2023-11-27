@@ -41,16 +41,16 @@ struct EntityCreationPhysicsData {
     is_dynamic: bool,
 }
 
-struct EntityCreationData {
+pub struct EntityCreationData {
     // gather data
-    cameras: Vec<Box<dyn Camera>>,
+    pub cameras: Vec<Box<dyn Camera>>,
     // if not specified then the object is visual only
-    physics: Option<EntityCreationPhysicsData>,
+    pub physics: Option<EntityCreationPhysicsData>,
     // mesh (untransformed)
-    mesh: Vec<mVertex>,
+    pub mesh: Vec<mVertex>,
     // initial transformation
     // position and rotation in space
-    isometry: Isometry3<f32>,
+    pub isometry: Isometry3<f32>,
 }
 
 struct PerCameraData {
@@ -106,13 +106,13 @@ pub struct GameWorld {
 }
 
 pub struct InteractiveRenderingConfig {
-    tracking_entity: u32,
-    surface: Arc<Surface>,
-    camera: Box<dyn InteractiveCamera>,
+    pub tracking_entity: u32,
+    pub surface: Arc<Surface>,
+    pub camera: Box<dyn InteractiveCamera>,
 }
 
 impl GameWorld {
-    fn new(
+    pub fn new(
         queue: Arc<Queue>,
         memory_allocator: Arc<StandardMemoryAllocator>,
         interactive_rendering_config: Option<InteractiveRenderingConfig>,
@@ -218,9 +218,20 @@ impl GameWorld {
                 );
             }
         }
+
+        // update camera (if necessary)
+        if let Some(ref mut per_window_state) = self.per_window_state {
+            if let Some(entity) = self.entities.get(&per_window_state.entity_id) {
+                let isometry = entity.isometry;
+                per_window_state
+                    .camera
+                    .set_position(isometry.translation.vector);
+                per_window_state.camera.update();
+            }
+        }
     }
 
-    fn add_entity(&mut self, entity_id: u32, entity_creation_data: EntityCreationData) {
+    pub fn add_entity(&mut self, entity_id: u32, entity_creation_data: EntityCreationData) {
         let EntityCreationData {
             cameras,
             physics,
@@ -267,7 +278,21 @@ impl GameWorld {
         );
     }
 
-    fn remove_entity(&mut self, entity_id: u32) {
+    pub fn render(&mut self) {
+        if let Some(ref mut per_window_state) = self.per_window_state {
+            let extent = interactive_rendering::get_surface_extent(&per_window_state.surface);
+            let push_data = shader::vert::PushConstantData {
+                mvp: per_window_state.camera.mvp(extent).into(),
+            };
+            let vertex_buffers = vec![
+                self.dynamic_scene.vertex_buffer(),
+                self.static_scene.vertex_buffer(),
+            ];
+            per_window_state.renderer.render(vertex_buffers, push_data)
+        }
+    }
+
+    pub fn remove_entity(&mut self, entity_id: u32) {
         let entity = self.entities.remove(&entity_id);
         match entity {
             Some(Entity {
@@ -289,18 +314,14 @@ impl GameWorld {
         self.static_scene.remove_object(entity_id);
     }
 
-    fn get_vertex_buffers(&mut self) -> Vec<Subbuffer<[mVertex]>> {
-        vec![
-            self.dynamic_scene.vertex_buffer(),
-            self.static_scene.vertex_buffer(),
-        ]
-    }
-
-    fn handle_window_event(&mut self, input: &winit::event::WindowEvent) {
+    pub fn handle_window_event(&mut self, input: &winit::event::WindowEvent) {
         match self.per_window_state {
             Some(ref mut per_window_state) => {
                 per_window_state.user_input_state.handle_input(input);
-                per_window_state.camera.handle_event(input);
+                per_window_state.camera.handle_event(
+                    interactive_rendering::get_surface_extent(&per_window_state.surface),
+                    input,
+                );
             }
             None => (),
         }
