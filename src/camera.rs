@@ -1,4 +1,6 @@
-use nalgebra::{Matrix4, Point3, Vector3};
+use nalgebra::{Matrix4, Point3, Quaternion, Vector3, Vector2, Point};
+
+use crate::handle_user_input::UserInputState;
 
 fn deg2rad(deg: f32) -> f32 {
     deg * std::f32::consts::PI / 180.0
@@ -34,6 +36,15 @@ pub trait Camera {
     fn set_position(&mut self, pos: Point3<f32>);
 }
 
+fn gen_perspective_projection(extent: [u32; 2]) -> Matrix4<f32> {
+    let [screen_x, screeen_y] = extent;
+    let aspect_ratio = screen_x as f32 / screen_y as f32;
+    let fov = deg2rad(90.0);
+    let near = 0.1;
+    let far = 100.0;
+    Matrix4::new_perspective(aspect_ratio, fov, near, far)
+}
+
 #[derive(Clone, Debug)]
 pub struct PerspectiveCamera {
     // global camera position
@@ -64,19 +75,11 @@ impl PerspectiveCamera {
             dirs: DirVecs::new(worldup, pitch, yaw),
         }
     }
-
-    fn gen_projection(screen_x: u32, screen_y: u32) -> Matrix4<f32> {
-        let aspect_ratio = screen_x as f32 / screen_y as f32;
-        let fov = deg2rad(90.0);
-        let near = 0.1;
-        let far = 100.0;
-        Matrix4::new_perspective(aspect_ratio, fov, near, far)
-    }
 }
 
 impl Camera for PerspectiveCamera {
     fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
-        let projection = PerspectiveCamera::gen_projection(extent[0], extent[1]);
+        let projection = gen_perspective_projection(extent);
         let view = Matrix4::look_at_rh(&self.pos, &(self.pos - self.dirs.front), &self.worldup);
         projection * view
     }
@@ -84,6 +87,14 @@ impl Camera for PerspectiveCamera {
     fn set_position(&mut self, pos: Point3<f32>) {
         self.pos = pos;
     }
+}
+
+fn gen_orthogonal_projection([screen_x, screen_y]: [u32; 2]) -> Matrix4<f32> {
+    let left = -(screen_x as f32) / 2.0;
+    let right = screen_x as f32 / 2.0;
+    let bottom = -(screen_y as f32) / 2.0;
+    let top = screen_y as f32 / 2.0;
+    Matrix4::new_orthographic(left, right, bottom, top, 0.0, 10.0)
 }
 
 #[derive(Clone, Debug)]
@@ -116,19 +127,11 @@ impl OrthogonalCamera {
             dirs: DirVecs::new(worldup, pitch, yaw),
         }
     }
-
-    fn gen_projection(screen_x: u32, screen_y: u32) -> Matrix4<f32> {
-        let left = -(screen_x as f32) / 2.0;
-        let right = screen_x as f32 / 2.0;
-        let bottom = -(screen_y as f32) / 2.0;
-        let top = screen_y as f32 / 2.0;
-        Matrix4::new_orthographic(left, right, bottom, top, 0.0, 10.0)
-    }
 }
 
 impl Camera for OrthogonalCamera {
     fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
-        let projection = OrthogonalCamera::gen_projection(extent[0], extent[1]);
+        let projection = gen_orthogonal_projection(extent);
         let view = Matrix4::look_at_rh(&self.pos, &(self.pos - self.dirs.front), &self.worldup);
         projection * view
     }
@@ -144,5 +147,88 @@ pub trait InteractiveCamera: Camera {
 
 // lets you orbit around the central point by clicking and dragging
 pub struct TrackballCamera {
+    // position of the camera's root point
+    root_pos: Point3<f32>,
+    // world up
+    worldup: Vector3<f32>,
 
+
+    // how much to damp the rotation at each step
+    damping_factor: f32,
+
+    // to track the mouse
+    user_input: UserInputState,
+
+    // the following two quaternions are multiplied together to produce the
+    // real rotation
+
+    // the base orientation of the object
+    base_q: Quaternion<f32>,
+    // the rotation added by the mouse (generated each frame)
+    curr_q: Quaternion<f32>,
+    // the rotation used for momentum
+    momentum_q: Quaternion<f32>,
+
+    // momentumMagnitude is the magnitude of the momentum vector
+    momentum_magnitude: f32,
 }
+
+impl TrackballCamera {
+    pub fn new(pos: Point3<f32>) -> TrackballCamera {
+        TrackballCamera {
+            root_pos: pos,
+            worldup: Vector3::new(0.0, -1.0, 0.0),
+            damping_factor: 0.9,
+            user_input: UserInputState::new(),
+            base_q: Quaternion::identity(),
+            curr_q: Quaternion::identity(),
+            momentum_q: Quaternion::identity(),
+            momentum_magnitude: 0.0,
+        }
+    }
+
+    fn project_trackball(p: Vector2<f32>) -> Vector3<f32> {
+        let (x, y) = (p.x, p.y);
+        
+        let r = 1.0;
+
+        let z = if x * x + y * y <= r * r / 2 {
+            f32::sqrt(r * r - (x * x) - (y * y))
+        } else {
+            (r * r / 2) / f32::sqrt(x * x + y * y)
+        };
+
+        return Vector3::new(x, -y, z);
+    }
+
+    fn get_normalized_mouse_coords(e: Vector2<f32>, extent:[u32; 2]) -> Vector2<f32> {
+        let trackball_radius = extent[0].min(extent[1]) as f32;
+
+        let center = Vector2::new(extent[0] as f32 / 2.0, extent[1] as f32 / 2.0);
+
+        let q = Vector2::new(
+            2.0 * (e.x - center.x) / trackball_radius,
+            2.0 * (e.y - center.y) / trackball_radius,
+        );
+
+        return q;
+    }
+}
+
+impl Camera for TrackballCamera {
+    fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
+        let projection = gen_perspective_projection(extent);
+        let view = Matrix4::look_at_rh(
+            &Point3::new(0.0, 0.0, 0.0),
+            &self.root_pos,
+            &self.worldup
+        );
+        projection * view
+    }
+
+    fn set_position(&mut self, pos: Point3<f32>) {
+        self.root_pos = pos;
+    }
+}
+
+impl InteractiveCamera 
