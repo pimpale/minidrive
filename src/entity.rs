@@ -13,17 +13,24 @@ use rapier3d::dynamics::RigidBodyHandle;
 use rapier3d::dynamics::RigidBodySet;
 use rapier3d::geometry::BroadPhase;
 use rapier3d::geometry::ColliderBuilder;
-use rapier3d::geometry::ColliderHandle;
 use rapier3d::geometry::ColliderSet;
 use rapier3d::geometry::NarrowPhase;
 use rapier3d::pipeline::PhysicsPipeline;
 use vulkano::buffer::Subbuffer;
+use vulkano::device::DeviceOwned;
+use vulkano::device::Queue;
 use vulkano::memory::allocator::StandardMemoryAllocator;
+use vulkano::shader::EntryPoint;
+use vulkano::swapchain::Surface;
 
 use crate::camera::Camera;
 use crate::camera::InteractiveCamera;
+use crate::handle_user_input::UserInputState;
 use crate::object;
+use crate::render_system::interactive_rendering;
+use crate::render_system::offscreen_rendering;
 use crate::render_system::scene::Scene;
+use crate::shader;
 use crate::vertex::mVertex;
 
 struct EntityCreationPhysicsData {
@@ -35,8 +42,6 @@ struct EntityCreationPhysicsData {
 }
 
 struct EntityCreationData {
-    // render
-    interactive_camera: Option<Box<dyn InteractiveCamera>>,
     // gather data
     cameras: Vec<Box<dyn Camera>>,
     // if not specified then the object is visual only
@@ -48,11 +53,14 @@ struct EntityCreationData {
     isometry: Isometry3<f32>,
 }
 
+struct PerCameraData {
+    camera: Box<dyn Camera>,
+    renderer: offscreen_rendering::Renderer<mVertex>,
+}
+
 struct Entity {
-    // render
-    interactive_camera: Option<Box<dyn InteractiveCamera>>,
     // gather data
-    cameras: Vec<Box<dyn Camera>>,
+    cameras: Vec<PerCameraData>,
     // physics
     rigid_body_handle: Option<RigidBodyHandle>,
     // mesh (untransformed)
@@ -61,7 +69,21 @@ struct Entity {
     isometry: Isometry3<f32>,
 }
 
-struct GameWorld {
+struct PerWindowState {
+    entity_id: u32,
+    surface: Arc<Surface>,
+    camera: Box<dyn InteractiveCamera>,
+    renderer: interactive_rendering::Renderer<mVertex>,
+}
+
+struct PerDeviceState {
+    queue: Arc<Queue>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
+    fs: EntryPoint,
+    vs: EntryPoint,
+}
+
+pub struct GameWorld {
     entities: HashMap<u32, Entity>,
     // scene for objects that change infrequently (e.g. terrain, roads)
     dynamic_scene: Scene<u32, mVertex>,
@@ -77,10 +99,65 @@ struct GameWorld {
     impulse_joint_set: ImpulseJointSet,
     multibody_joint_set: MultibodyJointSet,
     ccd_solver: CCDSolver,
+    // state per window
+    per_window_state: Option<PerWindowState>,
+    // per device vulkan objects
+    per_device_state: PerDeviceState,
+}
+
+pub struct InteractiveRenderingConfig {
+    tracking_entity: u32,
+    surface: Arc<Surface>,
+    camera: Box<dyn InteractiveCamera>,
 }
 
 impl GameWorld {
-    fn new(memory_allocator: Arc<StandardMemoryAllocator>) -> GameWorld {
+    fn new(
+        queue: Arc<Queue>,
+        memory_allocator: Arc<StandardMemoryAllocator>,
+        interactive_rendering_config: Option<InteractiveRenderingConfig>,
+    ) -> GameWorld {
+        let device = queue.device();
+
+        assert!(device == memory_allocator.device());
+
+        // initialize vulkan objects
+        let per_device_state = PerDeviceState {
+            queue,
+            memory_allocator,
+            vs: shader::vert::load(device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap(),
+            fs: shader::frag::load(device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap(),
+        };
+
+        // initialize interactive rendering if necessary
+        let per_window_state = match interactive_rendering_config {
+            Some(InteractiveRenderingConfig {
+                tracking_entity,
+                surface,
+                mut camera,
+            }) => {
+                let renderer = interactive_rendering::Renderer::new(
+                    vec![per_device_state.vs.clone(), per_device_state.fs.clone()],
+                    surface.clone(),
+                    per_device_state.queue.clone(),
+                    per_device_state.memory_allocator.clone(),
+                );
+                Some(PerWindowState {
+                    entity_id: tracking_entity,
+                    camera,
+                    surface,
+                    renderer,
+                })
+            }
+            None => None,
+        };
+
         let dynamic_scene = Scene::new(memory_allocator.clone(), HashMap::new());
         let static_scene = Scene::new(memory_allocator.clone(), HashMap::new());
 
@@ -97,6 +174,8 @@ impl GameWorld {
             impulse_joint_set: ImpulseJointSet::new(),
             multibody_joint_set: MultibodyJointSet::new(),
             ccd_solver: CCDSolver::new(),
+            per_device_state,
+            per_window_state,
         }
     }
 
@@ -143,13 +222,13 @@ impl GameWorld {
 
     fn add_entity(&mut self, entity_id: u32, entity_creation_data: EntityCreationData) {
         let EntityCreationData {
-            interactive_camera,
             cameras,
             physics,
             mesh,
             isometry,
         } = entity_creation_data;
 
+        // add to physics solver if necessary
         let (mut scene, rigid_body_handle) = match physics {
             Some(EntityCreationPhysicsData { hitbox, is_dynamic }) => {
                 let rigid_body = match is_dynamic {
@@ -173,13 +252,14 @@ impl GameWorld {
             None => (self.static_scene, None),
         };
 
+        // add mesh to scene
         scene.add_object(entity_id, object::transform(mesh, &isometry));
 
         self.entities.insert(
             entity_id,
             Entity {
-                interactive_camera,
-                cameras,
+                // TODO: initialize cameras
+                cameras: vec![],
                 rigid_body_handle,
                 mesh,
                 isometry,
@@ -216,11 +296,13 @@ impl GameWorld {
         ]
     }
 
-    fn handle_mouse_event(&mut self, input: &winit::event::MouseScrollDelta) {
-        for (_, entity) in self.entities.iter_mut() {
-            if let Some(ref mut interactive_camera) = entity.interactive_camera {
-                interactive_camera.handle_mouse_event(input);
+    fn handle_window_event(&mut self, input: &winit::event::WindowEvent) {
+        match self.per_window_state {
+            Some(ref mut per_window_state) => {
+                per_window_state.user_input_state.handle_input(input);
+                per_window_state.camera.handle_event(input);
             }
+            None => (),
         }
     }
 }

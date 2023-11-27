@@ -30,9 +30,8 @@ impl DirVecs {
 }
 
 pub trait Camera {
-    fn mvp(&self) -> Matrix4<f32>;
+    fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32>;
     fn set_position(&mut self, pos: Point3<f32>);
-    fn set_screen_extent(&mut self, extent: [u32; 2]);
 }
 
 #[derive(Clone, Debug)]
@@ -48,13 +47,10 @@ pub struct PerspectiveCamera {
 
     // relative directions
     dirs: DirVecs,
-
-    // Projection Matrix
-    projection: Matrix4<f32>,
 }
 
 impl PerspectiveCamera {
-    pub fn new(pos: Point3<f32>, screen_x: u32, screen_y: u32) -> PerspectiveCamera {
+    pub fn new(pos: Point3<f32>) -> PerspectiveCamera {
         let pitch = 0.0;
         let yaw = deg2rad(-90.0);
 
@@ -66,7 +62,6 @@ impl PerspectiveCamera {
             pitch,
             yaw,
             dirs: DirVecs::new(worldup, pitch, yaw),
-            projection: PerspectiveCamera::gen_projection(screen_x, screen_y),
         }
     }
 
@@ -80,17 +75,14 @@ impl PerspectiveCamera {
 }
 
 impl Camera for PerspectiveCamera {
-    fn mvp(&self) -> Matrix4<f32> {
+    fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
+        let projection = PerspectiveCamera::gen_projection(extent[0], extent[1]);
         let view = Matrix4::look_at_rh(&self.pos, &(self.pos - self.dirs.front), &self.worldup);
-        self.projection * view
+        projection * view
     }
 
     fn set_position(&mut self, pos: Point3<f32>) {
         self.pos = pos;
-    }
-
-    fn set_screen_extent(&mut self, extent: [u32; 2]) {
-        self.projection = PerspectiveCamera::gen_projection(extent[0], extent[1]);
     }
 }
 
@@ -107,13 +99,10 @@ pub struct OrthogonalCamera {
 
     // relative directions
     dirs: DirVecs,
-
-    // Projection Matrix
-    projection: Matrix4<f32>,
 }
 
 impl OrthogonalCamera {
-    pub fn new(pos: Point3<f32>, screen_x: u32, screen_y: u32) -> OrthogonalCamera {
+    pub fn new(pos: Point3<f32>) -> OrthogonalCamera {
         let pitch = 0.0;
         let yaw = deg2rad(-90.0);
 
@@ -125,7 +114,6 @@ impl OrthogonalCamera {
             pitch,
             yaw,
             dirs: DirVecs::new(worldup, pitch, yaw),
-            projection: OrthogonalCamera::gen_projection(screen_x, screen_y),
         }
     }
 
@@ -139,20 +127,22 @@ impl OrthogonalCamera {
 }
 
 impl Camera for OrthogonalCamera {
-    fn mvp(&self) -> Matrix4<f32> {
+    fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
+        let projection = OrthogonalCamera::gen_projection(extent[0], extent[1]);
         let view = Matrix4::look_at_rh(&self.pos, &(self.pos - self.dirs.front), &self.worldup);
-        self.projection * view
+        projection * view
     }
 
     fn set_position(&mut self, pos: Point3<f32>) {
         self.pos = pos;
     }
-
-    fn set_screen_extent(&mut self, extent: [u32; 2]) {
-        self.projection = OrthogonalCamera::gen_projection(extent[0], extent[1]);
-    }
 }
 
-pub trait InteractiveCamera {
-    fn handle_mouse_event(&mut self, input: &winit::event::MouseScrollDelta);
+pub trait InteractiveCamera: Camera {
+    fn handle_event(&mut self, extent: [u32; 2], input: &winit::event::WindowEvent);
+}
+
+// lets you orbit around the central point by clicking and dragging
+pub struct TrackballCamera {
+
 }

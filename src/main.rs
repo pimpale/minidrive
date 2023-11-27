@@ -1,3 +1,4 @@
+use entity::{GameWorld, InteractiveRenderingConfig};
 use nalgebra::{Point3, Vector3};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -36,16 +37,18 @@ use winit::event::{Event, VirtualKeyCode, WindowEvent};
 use winit::window::{Window, WindowBuilder};
 
 mod camera;
+mod entity;
 mod handle_user_input;
 mod object;
 mod render_system;
 mod shader;
 mod vertex;
-mod entity;
 
 fn build_scene(
+    queue: Arc<vulkano::device::Queue>,
     memory_allocator: Arc<StandardMemoryAllocator>,
-) -> render_system::scene::Scene<String, vertex::mVertex> {
+    surface: Arc<Surface<Window>>,
+) -> GameWorld {
     let rd = vec![
         [0.0, 0.0, 0.0].into(),
         [1.0, 0.0, 0.0].into(),
@@ -105,7 +108,16 @@ fn build_scene(
         ]),
     );
 
-    return scene;
+    let world = GameWorld::new(
+        queue,
+        memory_allocator,
+        InteractiveRenderingConfig {
+            surface,
+            tracking_entity: 0,
+        },
+    );
+
+    world
 }
 
 fn main() {
@@ -123,18 +135,12 @@ fn main() {
     )
     .unwrap();
 
-    let device_extensions = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::empty()
-    };
-
     let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
 
-    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
+    let surface = Surface::from_window(instance.clone(), window).unwrap();
 
-    let (device, queue) = render_system::rendering3d::get_device(
+    let (device, queue) = render_system::interactive_rendering::get_device_for_rendering_on(
         instance.clone(),
-        device_extensions,
         surface.clone(),
     );
 
@@ -145,56 +151,21 @@ fn main() {
         device.physical_device().properties().device_type
     );
 
-    let vs = shader::vert::load(device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
-    let fs = shader::frag::load(device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
-
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-    let mut renderer = render_system::rendering3d::Renderer::new(
-        vec![vs, fs],
-        surface.clone(),
-        queue.clone(),
-        memory_allocator.clone(),
-    );
-
-    let mut camera = camera::PerspectiveCamera::new(
-        Point3::new(0.0, 0.0, -1.0),
-        window.inner_size().width,
-        window.inner_size().height,
-    );
-
-    let mut keyboard_state = handle_user_input::KeyboardState::new();
+    let mut camera = camera::PerspectiveCamera::new(Point3::new(0.0, 0.0, -1.0));
 
     let mut start_time = std::time::Instant::now();
     let mut frame_count = 0;
 
-    event_loop.run(move |event, _, control_flow| match event {
+    event_loop.run_return(move |event, _, control_flow| match event {
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
         } => {
             *control_flow = ControlFlow::Exit;
         }
-        Event::WindowEvent {
-            event: WindowEvent::KeyboardInput { input, .. },
-            ..
-        } => {
-            // Handle keyboard input
-            keyboard_state.handle_keyboard_input(input);
-        }
-        Event::WindowEvent {
-            event: WindowEvent::Resized(size),
-            ..
-        } => {
-            // Update the camera
-            camera.set_screen(size.width, size.height);
-        }
+        e @ Event::WindowEvent => {}
         Event::RedrawEventsCleared => {
             // Update the camera
             keyboard_state.apply_to_camera(&mut camera);

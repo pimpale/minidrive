@@ -36,11 +36,15 @@ use vulkano::{
 };
 use winit::window::Window;
 
-pub fn get_device(
+pub fn get_device_for_rendering_on(
     instance: Arc<Instance>,
-    device_extensions: DeviceExtensions,
     surface: Arc<Surface>,
 ) -> (Arc<Device>, Arc<Queue>) {
+    let device_extensions = DeviceExtensions {
+        khr_swapchain: true,
+        ..DeviceExtensions::empty()
+    };
+
     // We then choose which physical device to use. First, we enumerate all the available physical
     // devices, then apply filters to narrow them down to those that can support our needs.
     let (physical_device, queue_family_index) = instance
@@ -288,6 +292,15 @@ fn create_swapchain(
     .unwrap()
 }
 
+pub fn get_surface_extent(surface: &Surface) -> [u32; 2] {
+    let window = surface
+        .object()
+        .unwrap()
+        .downcast_ref::<Window>()
+        .unwrap();
+    window.inner_size().into()
+}
+
 pub struct Renderer<Vert> {
     stages: Vec<EntryPoint>,
     surface: Arc<Surface>,
@@ -401,13 +414,7 @@ impl<T> Renderer<T> {
     {
         // Do not draw frame when screen dimensions are zero.
         // On Windows, this can occur from minimizing the application.
-        let window = self
-            .surface
-            .object()
-            .unwrap()
-            .downcast_ref::<Window>()
-            .unwrap();
-        let extent: [u32; 2] = window.inner_size().into();
+        let extent = get_surface_extent(&self.surface);
         if extent[0] == 0 || extent[1] == 0 {
             return;
         }

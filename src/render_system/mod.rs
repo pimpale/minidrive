@@ -1,2 +1,3 @@
-pub mod rendering3d;
+pub mod interactive_rendering;
+pub mod offscreen_rendering;
 pub mod scene;

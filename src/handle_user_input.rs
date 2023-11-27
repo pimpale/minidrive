@@ -1,6 +1,15 @@
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 
-pub struct KeyboardState {
+#[derive(Clone, Debug)]
+pub struct UserInputState {
+    // mouse state
+    pub x: f32,
+    pub y: f32,
+    pub dx: f32,
+    pub dy: f32,
+    pub mouse_down: bool,
+
+    // keyboard state
     pub w: bool,
     pub a: bool,
     pub s: bool,
@@ -13,9 +22,14 @@ pub struct KeyboardState {
     pub right: bool,
 }
 
-impl KeyboardState {
-    pub fn new() -> KeyboardState {
-        KeyboardState {
+impl UserInputState {
+    pub fn new() -> UserInputState {
+        UserInputState {
+            x: 0.0,
+            y: 0.0,
+            dx: 0.0,
+            dy: 0.0,
+            mouse_down: false,
             w: false,
             a: false,
             s: false,
@@ -24,26 +38,43 @@ impl KeyboardState {
             e: false,
             up: false,
             left: false,
-            down: false,
             right: false,
+            down: false,
         }
     }
-    pub fn handle_keyboard_input(&mut self, input: KeyboardInput) {
-        if let Some(kc) = input.virtual_keycode {
-            match kc {
-                VirtualKeyCode::W => self.w = input.state == ElementState::Pressed,
-                VirtualKeyCode::A => self.a = input.state == ElementState::Pressed,
-                VirtualKeyCode::S => self.s = input.state == ElementState::Pressed,
-                VirtualKeyCode::D => self.d = input.state == ElementState::Pressed,
-                VirtualKeyCode::Q => self.q = input.state == ElementState::Pressed,
-                VirtualKeyCode::E => self.e = input.state == ElementState::Pressed,
-                VirtualKeyCode::Up => self.up = input.state == ElementState::Pressed,
-                VirtualKeyCode::Left => self.left = input.state == ElementState::Pressed,
-                VirtualKeyCode::Down => self.down = input.state == ElementState::Pressed,
-                VirtualKeyCode::Right => self.right = input.state == ElementState::Pressed,
-                _ => (),
+    pub fn handle_input(&mut self, input: &winit::event::WindowEvent) {
+        match input {
+            winit::event::WindowEvent::CursorMoved { position, .. } => {
+                self.dx = position.x as f32 - self.x;
+                self.dy = position.y as f32 - self.y;
+                self.x = position.x as f32;
+                self.y = position.y as f32;
             }
+            winit::event::WindowEvent::MouseInput { state, .. } => {
+                self.down = *state == ElementState::Pressed;
+            }
+            winit::event::WindowEvent::KeyboardInput {
+                input:
+                    KeyboardInput {
+                        virtual_keycode: Some(kc),
+                        state,
+                        ..
+                    },
+                ..
+            } => match kc {
+                VirtualKeyCode::W => self.w = state == &ElementState::Pressed,
+                VirtualKeyCode::A => self.a = state == &ElementState::Pressed,
+                VirtualKeyCode::S => self.s = state == &ElementState::Pressed,
+                VirtualKeyCode::D => self.d = state == &ElementState::Pressed,
+                VirtualKeyCode::Q => self.q = state == &ElementState::Pressed,
+                VirtualKeyCode::E => self.e = state == &ElementState::Pressed,
+                VirtualKeyCode::Up => self.up = state == &ElementState::Pressed,
+                VirtualKeyCode::Left => self.left = state == &ElementState::Pressed,
+                VirtualKeyCode::Down => self.down = state == &ElementState::Pressed,
+                VirtualKeyCode::Right => self.right = state == &ElementState::Pressed,
+                _ => (),
+            },
+            _ => (),
         }
     }
 }
-
