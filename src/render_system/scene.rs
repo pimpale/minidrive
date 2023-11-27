@@ -8,7 +8,7 @@ use vulkano::{
 pub struct Scene<K, Vertex> {
     objects: HashMap<K, Vec<Vertex>>,
     memory_allocator: Arc<dyn MemoryAllocator>,
-    vertex_buffer: Subbuffer<[Vertex]>,
+    vertex_buffer: Option<Subbuffer<[Vertex]>>,
     vertex_buffer_needs_update: bool,
 }
 
@@ -46,7 +46,7 @@ where
         &self.objects
     }
 
-    pub fn vertex_buffer(&mut self) -> Subbuffer<[Vertex]> {
+    pub fn vertex_buffer(&mut self) -> Option<Subbuffer<[Vertex]>> {
         if self.vertex_buffer_needs_update {
             self.vertex_buffer =
                 vertex_buffer(self.memory_allocator.clone(), self.objects.values());
@@ -59,27 +59,34 @@ where
 fn vertex_buffer<'a, Vertex, Container>(
     memory_allocator: Arc<dyn MemoryAllocator>,
     objects: Container,
-) -> Subbuffer<[Vertex]>
+) -> Option<Subbuffer<[Vertex]>>
 where
     Container: IntoIterator<Item = &'a Vec<Vertex>>,
     Vertex: Clone + BufferContents,
 {
-    Buffer::from_iter(
-        memory_allocator,
-        BufferCreateInfo {
-            usage: BufferUsage::VERTEX_BUFFER,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-            ..Default::default()
-        },
-        objects
-            .into_iter()
-            .flat_map(|o| o.iter())
-            .cloned()
-            .collect::<Vec<Vertex>>(),
-    )
-    .unwrap()
+    let vertexes = objects
+        .into_iter()
+        .flat_map(|o| o.iter())
+        .cloned()
+        .collect::<Vec<Vertex>>();
+    if vertexes.len() == 0 {
+        return None;
+    } else {
+        let buffer = Buffer::from_iter(
+            memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            vertexes,
+        )
+        .unwrap();
+
+        return Some(buffer);
+    }
 }

@@ -119,8 +119,8 @@ pub fn unitcube() -> Vec<Vertex> {
     cuboid(Point3::new(0.0, 0.0, 0.0), Vector3::new(1.0, 1.0, 1.0))
 }
 
-pub fn transform(vec: Vec<Vertex>, isometry: &Isometry3<f32>) -> Vec<Vertex> {
-    vec.into_iter()
+pub fn transform(vec: &Vec<Vertex>, isometry: &Isometry3<f32>) -> Vec<Vertex> {
+    vec.iter()
         .map(|v| {
             let loc: Point3<f32> = isometry * Point3::from(v.loc);
             Vertex::new(loc.into(), v.color)

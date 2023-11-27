@@ -33,12 +33,12 @@ use crate::render_system::scene::Scene;
 use crate::shader;
 use crate::vertex::mVertex;
 
-struct EntityCreationPhysicsData {
+pub struct EntityCreationPhysicsData {
     // describes the dimensions of the object (aligned with the mesh)
-    hitbox: Vector3<f32>,
+    pub hitbox: Vector3<f32>,
     // if true, the object can be moved by the physics engine
     // if false, then the object will not move due to forces. If hitbox is specified, it can still be collided with
-    is_dynamic: bool,
+    pub is_dynamic: bool,
 }
 
 pub struct EntityCreationData {
@@ -123,8 +123,8 @@ impl GameWorld {
 
         // initialize vulkan objects
         let per_device_state = PerDeviceState {
-            queue,
-            memory_allocator,
+            queue: queue.clone(),
+            memory_allocator: memory_allocator.clone(),
             vs: shader::vert::load(device.clone())
                 .unwrap()
                 .entry_point("main")
@@ -140,7 +140,7 @@ impl GameWorld {
             Some(InteractiveRenderingConfig {
                 tracking_entity,
                 surface,
-                mut camera,
+                camera,
             }) => {
                 let renderer = interactive_rendering::Renderer::new(
                     vec![per_device_state.vs.clone(), per_device_state.fs.clone()],
@@ -179,7 +179,7 @@ impl GameWorld {
         }
     }
 
-    fn step(&mut self) {
+    pub fn step(&mut self) {
         // step physics
         self.physics_pipeline.step(
             &Vector3::new(0.0, -9.81, 0.0),
@@ -199,23 +199,20 @@ impl GameWorld {
 
         // update entity positions from physics and update mesh if necessary
         for (&entity_id, entity) in self.entities.iter_mut() {
-            let (mut scene, new_isometry) = match entity {
+            let (scene, new_isometry) = match entity {
                 Entity {
                     rigid_body_handle: Some(rigid_body_handle),
                     ..
                 } => (
-                    self.dynamic_scene,
+                    &mut self.dynamic_scene,
                     self.rigid_body_set[*rigid_body_handle].position(),
                 ),
-                Entity { ref isometry, .. } => (self.static_scene, isometry),
+                Entity { ref isometry, .. } => (&mut self.static_scene, isometry),
             };
 
             if new_isometry != &entity.isometry {
                 entity.isometry = new_isometry.clone();
-                scene.add_object(
-                    entity_id,
-                    object::transform(entity.mesh.clone(), new_isometry),
-                );
+                scene.add_object(entity_id, object::transform(&entity.mesh, &entity.isometry));
             }
         }
 
@@ -225,7 +222,7 @@ impl GameWorld {
                 let isometry = entity.isometry;
                 per_window_state
                     .camera
-                    .set_position(isometry.translation.vector);
+                    .set_position(isometry.translation.vector.into());
                 per_window_state.camera.update();
             }
         }
@@ -240,7 +237,7 @@ impl GameWorld {
         } = entity_creation_data;
 
         // add to physics solver if necessary
-        let (mut scene, rigid_body_handle) = match physics {
+        let (scene, rigid_body_handle) = match physics {
             Some(EntityCreationPhysicsData { hitbox, is_dynamic }) => {
                 let rigid_body = match is_dynamic {
                     true => RigidBodyBuilder::dynamic(),
@@ -258,13 +255,13 @@ impl GameWorld {
                     &mut self.rigid_body_set,
                 );
 
-                (self.dynamic_scene, Some(rigid_body_handle))
+                (&mut self.dynamic_scene, Some(rigid_body_handle))
             }
-            None => (self.static_scene, None),
+            None => (&mut self.static_scene, None),
         };
 
         // add mesh to scene
-        scene.add_object(entity_id, object::transform(mesh, &isometry));
+        scene.add_object(entity_id, object::transform(&mesh, &isometry));
 
         self.entities.insert(
             entity_id,
@@ -284,10 +281,12 @@ impl GameWorld {
             let push_data = shader::vert::PushConstantData {
                 mvp: per_window_state.camera.mvp(extent).into(),
             };
-            let vertex_buffers = vec![
+            let vertex_buffers = [
                 self.dynamic_scene.vertex_buffer(),
                 self.static_scene.vertex_buffer(),
-            ];
+            ]
+            .into_iter()
+            .flatten();
             per_window_state.renderer.render(vertex_buffers, push_data)
         }
     }
@@ -317,7 +316,6 @@ impl GameWorld {
     pub fn handle_window_event(&mut self, input: &winit::event::WindowEvent) {
         match self.per_window_state {
             Some(ref mut per_window_state) => {
-                per_window_state.user_input_state.handle_input(input);
                 per_window_state.camera.handle_event(
                     interactive_rendering::get_surface_extent(&per_window_state.surface),
                     input,

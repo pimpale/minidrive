@@ -96,7 +96,7 @@ pub fn get_device_for_rendering_on(
             // We assign a lower score to device types that are likely to be faster/better.
             match p.properties().device_type {
                 PhysicalDeviceType::DiscreteGpu => 0,
-                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::IntegratedGpu => -1, // TODO (my discrete card is broken)
                 PhysicalDeviceType::VirtualGpu => 2,
                 PhysicalDeviceType::Cpu => 3,
                 PhysicalDeviceType::Other => 4,

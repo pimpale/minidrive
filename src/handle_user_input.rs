@@ -5,8 +5,8 @@ pub struct UserInputState {
     // mouse state
     pub x: f32,
     pub y: f32,
-    pub dx: f32,
-    pub dy: f32,
+    pub px: f32,
+    pub py: f32,
     pub mouse_down: bool,
 
     // keyboard state
@@ -27,8 +27,8 @@ impl UserInputState {
         UserInputState {
             x: 0.0,
             y: 0.0,
-            dx: 0.0,
-            dy: 0.0,
+            px: 0.0,
+            py: 0.0,
             mouse_down: false,
             w: false,
             a: false,
@@ -45,8 +45,8 @@ impl UserInputState {
     pub fn handle_input(&mut self, input: &winit::event::WindowEvent) {
         match input {
             winit::event::WindowEvent::CursorMoved { position, .. } => {
-                self.dx = position.x as f32 - self.x;
-                self.dy = position.y as f32 - self.y;
+                self.px = self.x;
+                self.py = self.y;
                 self.x = position.x as f32;
                 self.y = position.y as f32;
             }

@@ -1,5 +1,5 @@
-use entity::{GameWorld, InteractiveRenderingConfig};
-use nalgebra::{Point3, Vector3, Isometry};
+use entity::{EntityCreationData, GameWorld, InteractiveRenderingConfig};
+use nalgebra::{Isometry, Isometry3, Point3, Vector3};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -47,7 +47,7 @@ mod vertex;
 fn build_scene(
     queue: Arc<vulkano::device::Queue>,
     memory_allocator: Arc<StandardMemoryAllocator>,
-    surface: Arc<Surface<Window>>,
+    surface: Arc<Surface>,
 ) -> GameWorld {
     let rd = vec![
         [0.0, 0.0, 0.0].into(),
@@ -84,29 +84,7 @@ fn build_scene(
     ];
 
     let g = vec![[0.0, -0.1, -50.0].into(), [0.0, -0.1, 50.0].into()];
-    // scene
-    let mut scene = render_system::scene::Scene::new(
-        memory_allocator.clone(),
-        HashMap::from([
-            (
-                "road".to_owned(),
-                object::flat_polyline(rd.clone(), 1.0, [0.5, 0.5, 0.5, 1.0]),
-            ),
-            (
-                "roadyellowline".to_owned(),
-                object::flat_polyline(
-                    rd.iter().map(|v| v + Vector3::new(0.0, 0.1, 0.0)).collect(),
-                    0.1,
-                    [1.0, 1.0, 0.0, 1.0],
-                ),
-            ),
-            (
-                "ground".to_owned(),
-                object::flat_polyline(g.clone(), 50.0, [0.3, 0.5, 0.3, 1.0]),
-            ),
-            ("cube".to_owned(), object::unitcube()),
-        ]),
-    );
+
 
     let mut world = GameWorld::new(
         queue,
@@ -118,13 +96,54 @@ fn build_scene(
         }),
     );
 
-    world.add_entity(0, EntityCreationData {
-        cameras: vec![],
-        physics: None,
-        mesh: object::unitcube(),
-        isometry: Isometry3::identity(),
-    });
+    // add ego agent
+    world.add_entity(
+        0,
+        EntityCreationData {
+            cameras: vec![],
+            physics: None,
+            mesh: object::unitcube(),
+            isometry: Isometry3::identity(),
+        },
+    );
 
+    // add road
+    world.add_entity(
+        1,
+        EntityCreationData {
+            cameras: vec![],
+            physics: None,
+            mesh: object::flat_polyline(rd.clone(), 1.0, [0.5, 0.5, 0.5, 1.0]),
+            isometry: Isometry3::identity(),
+        },
+    );
+
+    // add road yellow line
+    world.add_entity(
+        2,
+        EntityCreationData {
+            cameras: vec![],
+            physics: None,
+            mesh: object::flat_polyline(
+                rd.iter().map(|v| v + Vector3::new(0.0, 0.1, 0.0)).collect(),
+                0.1,
+                [1.0, 1.0, 0.0, 1.0],
+            ),
+            isometry: Isometry3::identity(),
+        },
+    );
+
+    // add ground
+    world.add_entity(
+        3,
+        EntityCreationData {
+            cameras: vec![],
+            physics: None,
+            mesh: object::flat_polyline(g.clone(), 1.0, [0.5, 0.5, 0.5, 1.0]),
+            isometry: Isometry3::identity(),
+        },
+    );
+    
     world
 }
 
@@ -164,17 +183,17 @@ fn main() {
     let mut start_time = std::time::Instant::now();
     let mut frame_count = 0;
 
-    let world = build_scene(queue.clone(), memory_allocator.clone(), surface.clone());
+    let mut world = build_scene(queue.clone(), memory_allocator.clone(), surface.clone());
 
-    event_loop.run_return(move |event, _, control_flow| match event {
+    event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
         } => {
             *control_flow = ControlFlow::Exit;
         }
-        e @ Event::WindowEvent => {
-            world.handle_event(e);
+        Event::WindowEvent { event, .. } => {
+            world.handle_window_event(&event);
         }
         Event::RedrawEventsCleared => {
             // print fps
@@ -187,8 +206,8 @@ fn main() {
             }
 
             // game step and render
-            game.step();
-            game.render();
+            world.step();
+            world.render();
         }
         _ => (),
     });
