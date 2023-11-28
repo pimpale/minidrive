@@ -96,14 +96,14 @@ pub fn cuboid(loc: Point3<f32>, dims: Vector3<f32>) -> Vec<Vertex> {
     let y = loc[1];
     let z = loc[2];
 
-    let lbu = Vertex::new([x - xsize, y - ysize, z - zsize], [0.5, 0.9, 0.5, 1.0]);
-    let rbu = Vertex::new([x + xsize, y - ysize, z - zsize], [0.5, 0.5, 0.9, 1.0]);
-    let lfu = Vertex::new([x - xsize, y - ysize, z + zsize], [0.9, 0.5, 0.5, 1.0]);
-    let rfu = Vertex::new([x + xsize, y - ysize, z + zsize], [0.5, 0.9, 0.5, 1.0]);
-    let lbl = Vertex::new([x - xsize, y + ysize, z - zsize], [0.5, 0.5, 0.9, 1.0]);
-    let rbl = Vertex::new([x + xsize, y + ysize, z - zsize], [0.9, 0.5, 0.5, 1.0]);
-    let lfl = Vertex::new([x - xsize, y + ysize, z + zsize], [0.5, 0.5, 0.5, 1.0]);
-    let rfl = Vertex::new([x + xsize, y + ysize, z + zsize], [0.5, 0.5, 0.5, 1.0]);
+    let lbu = Vertex::new([x - xsize, y + ysize, z - zsize], [0.5, 0.9, 0.9, 1.0]);
+    let rbu = Vertex::new([x + xsize, y + ysize, z - zsize], [0.5, 0.5, 0.9, 1.0]);
+    let lfu = Vertex::new([x - xsize, y + ysize, z + zsize], [0.9, 0.5, 0.9, 1.0]);
+    let rfu = Vertex::new([x + xsize, y + ysize, z + zsize], [0.5, 0.9, 0.9, 1.0]);
+    let lbl = Vertex::new([x - xsize, y - ysize, z - zsize], [0.5, 0.5, 0.3, 1.0]);
+    let rbl = Vertex::new([x + xsize, y - ysize, z - zsize], [0.9, 0.5, 0.3, 1.0]);
+    let lfl = Vertex::new([x - xsize, y - ysize, z + zsize], [0.5, 0.5, 0.3, 1.0]);
+    let rfl = Vertex::new([x + xsize, y - ysize, z + zsize], [0.0, 0.0, 0.3, 1.0]);
 
     vec![
         lbu, rbu, lfu, lfu, rfu, rbu, // upper square

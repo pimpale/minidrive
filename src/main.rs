@@ -92,7 +92,7 @@ fn build_scene(
         Some(InteractiveRenderingConfig {
             surface,
             tracking_entity: 0,
-            camera: Box::new(camera::TrackballCamera::new(Point3::new(0.0, 0.0, -1.0))),
+            camera: Box::new(camera::SphericalCamera::new(Point3::new(0.0, 0.0, -1.0))),
         }),
     );
 
@@ -139,7 +139,7 @@ fn build_scene(
         EntityCreationData {
             cameras: vec![],
             physics: None,
-            mesh: object::flat_polyline(g.clone(), 1.0, [0.5, 0.5, 0.5, 1.0]),
+            mesh: object::flat_polyline(g.clone(), 50.0, [0.5, 1.0, 0.5, 1.0]),
             isometry: Isometry3::identity(),
         },
     );

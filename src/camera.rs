@@ -1,4 +1,6 @@
-use nalgebra::{Matrix, Matrix4, Point, Point3, Quaternion, UnitQuaternion, Vector2, Vector3, Point2};
+use nalgebra::{
+    Matrix, Matrix4, Point, Point2, Point3, Quaternion, UnitQuaternion, Vector2, Vector3,
+};
 use winit::event::ElementState;
 
 use crate::handle_user_input::UserInputState;
@@ -90,16 +92,17 @@ impl Camera for PerspectiveCamera {
     }
 }
 
-fn gen_orthogonal_projection([screen_x, screen_y]: [u32; 2]) -> Matrix4<f32> {
-    let left = -(screen_x as f32) / 2.0;
-    let right = screen_x as f32 / 2.0;
-    let bottom = -(screen_y as f32) / 2.0;
-    let top = screen_y as f32 / 2.0;
-    Matrix4::new_orthographic(left, right, bottom, top, 0.0, 10.0)
+fn gen_orthographic_projection([screen_x, screen_y]: [u32; 2]) -> Matrix4<f32> {
+    let scale = 160.0;
+    let left = -(screen_x as f32) / scale;
+    let right = screen_x as f32 / scale;
+    let bottom = -(screen_y as f32) / scale;
+    let top = screen_y as f32 / scale;
+    Matrix4::new_orthographic(left, right, bottom, top, -2000.0, 2000.0)
 }
 
 #[derive(Clone, Debug)]
-pub struct OrthogonalCamera {
+pub struct OrthographicCamera {
     // pitch and yaw values
     pitch: f32,
     yaw: f32,
@@ -113,14 +116,14 @@ pub struct OrthogonalCamera {
     dirs: DirVecs,
 }
 
-impl OrthogonalCamera {
-    pub fn new(pos: Point3<f32>) -> OrthogonalCamera {
+impl OrthographicCamera {
+    pub fn new(pos: Point3<f32>) -> OrthographicCamera {
         let pitch = 0.0;
         let yaw = deg2rad(-90.0);
 
         let worldup = Vector3::new(0.0, -1.0, 0.0);
 
-        OrthogonalCamera {
+        OrthographicCamera {
             pos,
             worldup,
             pitch,
@@ -130,9 +133,9 @@ impl OrthogonalCamera {
     }
 }
 
-impl Camera for OrthogonalCamera {
+impl Camera for OrthographicCamera {
     fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
-        let projection = gen_orthogonal_projection(extent);
+        let projection = gen_orthographic_projection(extent);
         let view = Matrix4::look_at_rh(&self.pos, &(self.pos - self.dirs.front), &self.worldup);
         projection * view
     }
@@ -148,7 +151,7 @@ pub trait InteractiveCamera: Camera {
 }
 
 // lets you orbit around the central point by clicking and dragging
-pub struct TrackballCamera {
+pub struct SphericalCamera {
     // position of the camera's root point
     root_pos: Point3<f32>,
     // world up
@@ -179,9 +182,9 @@ pub struct TrackballCamera {
     momentum_magnitude: f32,
 }
 
-impl TrackballCamera {
-    pub fn new(pos: Point3<f32>) -> TrackballCamera {
-        TrackballCamera {
+impl SphericalCamera {
+    pub fn new(pos: Point3<f32>) -> SphericalCamera {
+        SphericalCamera {
             root_pos: pos,
             worldup: Vector3::new(0.0, -1.0, 0.0),
             offset: 3.0,
@@ -198,7 +201,7 @@ impl TrackballCamera {
     }
 
     fn project_trackball(p: &Point2<f32>) -> Vector3<f32> {
-        let (x, y) = (p.x, p.y);
+        let (x, y) = (p.x, -p.y);
 
         let r = 1.0;
 
@@ -218,12 +221,11 @@ impl TrackballCamera {
     }
 }
 
-impl Camera for TrackballCamera {
+impl Camera for SphericalCamera {
     fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
         let rot = self.curr_q * self.base_q;
-        let model = Matrix4::new_translation(
-            &(self.root_pos.coords + rot * Vector3::new(self.offset, self.offset, self.offset)),
-        );
+        let model =
+            Matrix4::new_translation(&(self.root_pos.coords + rot * Vector3::new(2.0, 0.0, 0.0)));
         let view = Matrix4::from(rot);
         let projection = gen_perspective_projection(extent);
         projection * view * model
@@ -234,7 +236,7 @@ impl Camera for TrackballCamera {
     }
 }
 
-impl InteractiveCamera for TrackballCamera {
+impl InteractiveCamera for SphericalCamera {
     fn update(&mut self) {
         if !self.mouse_down {
             let combined_q =
@@ -257,13 +259,16 @@ impl InteractiveCamera for TrackballCamera {
             // cursor move
             winit::event::WindowEvent::CursorMoved { position, .. } => {
                 self.mouse_prev = self.mouse_curr;
-                self.mouse_curr = Point2::new(position.x as f32, position.y as f32);
+                self.mouse_curr = Self::get_normalized_mouse_coords(
+                    Point2::new(position.x as f32, position.y as f32),
+                    extent,
+                );
                 if self.mouse_down {
                     // current and past
                     let curr_t = Self::project_trackball(&self.mouse_curr).normalize();
                     let start_t = Self::project_trackball(&self.mouse_start).normalize();
 
-                    self.curr_q = UnitQuaternion::rotation_between(&start_t, &curr_t).unwrap();
+                    self.curr_q = UnitQuaternion::rotation_between(&curr_t, &start_t).unwrap();
                 }
             }
             // mouse up
@@ -276,7 +281,7 @@ impl InteractiveCamera for TrackballCamera {
                     let prev = Self::project_trackball(&self.mouse_prev).normalize();
                     // create momentum (for less jerky camera movements)
                     self.momentum_q =
-                        UnitQuaternion::rotation_between(&prev, &curr).unwrap_or_default();
+                        UnitQuaternion::rotation_between(&curr, &prev).unwrap_or_default();
                     self.momentum_magnitude = 1.0;
 
                     // set the base rotation our rotation that we were thinking about
