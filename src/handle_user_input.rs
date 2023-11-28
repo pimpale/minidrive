@@ -1,12 +1,11 @@
+use nalgebra::Point2;
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 
 #[derive(Clone, Debug)]
 pub struct UserInputState {
     // mouse state
-    pub x: f32,
-    pub y: f32,
-    pub px: f32,
-    pub py: f32,
+    pub pos: Point2<f32>,
+    pub ppos: Point2<f32>,
     pub mouse_down: bool,
 
     // keyboard state
@@ -25,10 +24,8 @@ pub struct UserInputState {
 impl UserInputState {
     pub fn new() -> UserInputState {
         UserInputState {
-            x: 0.0,
-            y: 0.0,
-            px: 0.0,
-            py: 0.0,
+            pos: Default::default(),
+            ppos: Default::default(),
             mouse_down: false,
             w: false,
             a: false,
@@ -45,10 +42,8 @@ impl UserInputState {
     pub fn handle_input(&mut self, input: &winit::event::WindowEvent) {
         match input {
             winit::event::WindowEvent::CursorMoved { position, .. } => {
-                self.px = self.x;
-                self.py = self.y;
-                self.x = position.x as f32;
-                self.y = position.y as f32;
+                self.ppos = self.pos;
+                self.pos = Point2::new(position.x as f32, position.y as f32);
             }
             winit::event::WindowEvent::MouseInput { state, .. } => {
                 self.down = *state == ElementState::Pressed;

@@ -1,4 +1,4 @@
-use nalgebra::{Matrix, Matrix4, Point, Point3, Quaternion, UnitQuaternion, Vector2, Vector3};
+use nalgebra::{Matrix, Matrix4, Point, Point3, Quaternion, UnitQuaternion, Vector2, Vector3, Point2};
 use winit::event::ElementState;
 
 use crate::handle_user_input::UserInputState;
@@ -157,8 +157,10 @@ pub struct TrackballCamera {
     offset: f32,
 
     // contains mouse data (if being dragged)
-    user_input_state: UserInputState,
-    mouse_location: Option<(Vector2<f32>, Vector2<f32>)>,
+    mouse_down: bool,
+    mouse_start: Point2<f32>,
+    mouse_prev: Point2<f32>,
+    mouse_curr: Point2<f32>,
 
     // how much to damp the rotation at each step
     damping_factor: f32,
@@ -184,8 +186,10 @@ impl TrackballCamera {
             worldup: Vector3::new(0.0, -1.0, 0.0),
             offset: 3.0,
             damping_factor: 0.9,
-            user_input_state: UserInputState::new(),
-            mouse_location: None,
+            mouse_down: false,
+            mouse_start: Default::default(),
+            mouse_prev: Default::default(),
+            mouse_curr: Default::default(),
             base_q: UnitQuaternion::identity(),
             curr_q: UnitQuaternion::identity(),
             momentum_q: UnitQuaternion::identity(),
@@ -193,7 +197,7 @@ impl TrackballCamera {
         }
     }
 
-    fn project_trackball(p: Vector2<f32>) -> Vector3<f32> {
+    fn project_trackball(p: &Point2<f32>) -> Vector3<f32> {
         let (x, y) = (p.x, p.y);
 
         let r = 1.0;
@@ -207,25 +211,19 @@ impl TrackballCamera {
         return Vector3::new(x, -y, z);
     }
 
-    fn get_normalized_mouse_coords(e: Vector2<f32>, extent: [u32; 2]) -> Vector2<f32> {
+    fn get_normalized_mouse_coords(e: Point2<f32>, extent: [u32; 2]) -> Point2<f32> {
         let trackball_radius = extent[0].min(extent[1]) as f32;
-
         let center = Vector2::new(extent[0] as f32 / 2.0, extent[1] as f32 / 2.0);
-
-        let q = Vector2::new(
-            2.0 * (e.x - center.x) / trackball_radius,
-            2.0 * (e.y - center.y) / trackball_radius,
-        );
-
-        return q;
+        return (e - center) / trackball_radius;
     }
 }
 
 impl Camera for TrackballCamera {
     fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
         let rot = self.curr_q * self.base_q;
-        let model =
-            Matrix4::new_translation(&(self.root_pos.coords + rot * Vector3::new(0.0, 0.0, self.offset)));
+        let model = Matrix4::new_translation(
+            &(self.root_pos.coords + rot * Vector3::new(self.offset, self.offset, self.offset)),
+        );
         let view = Matrix4::from(rot);
         let projection = gen_perspective_projection(extent);
         projection * view * model
@@ -238,7 +236,7 @@ impl Camera for TrackballCamera {
 
 impl InteractiveCamera for TrackballCamera {
     fn update(&mut self) {
-        if self.mouse_location.is_none() {
+        if !self.mouse_down {
             let combined_q =
                 UnitQuaternion::identity().slerp(&self.momentum_q, self.momentum_magnitude);
             self.momentum_magnitude *= self.damping_factor;
@@ -247,31 +245,25 @@ impl InteractiveCamera for TrackballCamera {
     }
 
     fn handle_event(&mut self, extent: [u32; 2], event: &winit::event::WindowEvent) {
-        self.user_input_state.handle_input(&event);
         match event {
             // mouse down
             winit::event::WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 ..
             } => {
-                self.mouse_location = Some((
-                    Self::get_normalized_mouse_coords(
-                        Vector2::new(self.user_input_state.x, self.user_input_state.y),
-                        extent,
-                    ),
-                    Self::get_normalized_mouse_coords(
-                        Vector2::new(self.user_input_state.px, self.user_input_state.py),
-                        extent,
-                    ),
-                ));
+                self.mouse_down = true;
+                self.mouse_start = self.mouse_curr;
             }
             // cursor move
-            winit::event::WindowEvent::CursorMoved { .. } => {
-                if let Some((curr, prev)) = self.mouse_location {
-                    let curr = Self::project_trackball(curr).normalize();
-                    let prev = Self::project_trackball(prev).normalize();
+            winit::event::WindowEvent::CursorMoved { position, .. } => {
+                self.mouse_prev = self.mouse_curr;
+                self.mouse_curr = Point2::new(position.x as f32, position.y as f32);
+                if self.mouse_down {
+                    // current and past
+                    let curr_t = Self::project_trackball(&self.mouse_curr).normalize();
+                    let start_t = Self::project_trackball(&self.mouse_start).normalize();
 
-                    self.curr_q = UnitQuaternion::rotation_between(&prev,& curr).unwrap_or_default();
+                    self.curr_q = UnitQuaternion::rotation_between(&start_t, &curr_t).unwrap();
                 }
             }
             // mouse up
@@ -279,11 +271,12 @@ impl InteractiveCamera for TrackballCamera {
                 state: ElementState::Released,
                 ..
             } => {
-                if let Some((curr, prev)) = self.mouse_location {
-                    let curr = Self::project_trackball(curr).normalize();
-                    let prev = Self::project_trackball(prev).normalize();
+                if self.mouse_down {
+                    let curr = Self::project_trackball(&self.mouse_curr).normalize();
+                    let prev = Self::project_trackball(&self.mouse_prev).normalize();
                     // create momentum (for less jerky camera movements)
-                    self.momentum_q = UnitQuaternion::rotation_between(&prev, &curr).unwrap_or_default();
+                    self.momentum_q =
+                        UnitQuaternion::rotation_between(&prev, &curr).unwrap_or_default();
                     self.momentum_magnitude = 1.0;
 
                     // set the base rotation our rotation that we were thinking about
@@ -292,7 +285,7 @@ impl InteractiveCamera for TrackballCamera {
                     // reset the current rotation
                     self.curr_q = UnitQuaternion::identity();
                 }
-                self.mouse_location = None;
+                self.mouse_down = false;
             }
             _ => {}
         }
