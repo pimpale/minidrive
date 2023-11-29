@@ -1,4 +1,4 @@
-use entity::{EntityCreationData, GameWorld, InteractiveRenderingConfig};
+use entity::{EntityCreationData, GameWorld, InteractiveRenderingConfig, EntityCreationPhysicsData};
 use nalgebra::{Isometry, Isometry3, Point3, Vector3};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -101,9 +101,11 @@ fn build_scene(
         0,
         EntityCreationData {
             cameras: vec![],
-            physics: None,
+            physics: Some(EntityCreationPhysicsData {
+                is_dynamic: true,
+            }),
             mesh: object::unitcube(),
-            isometry: Isometry3::identity(),
+            isometry: Isometry3::translation(0.0, 5.0, 0.0)
         },
     );
 
@@ -138,7 +140,9 @@ fn build_scene(
         3,
         EntityCreationData {
             cameras: vec![],
-            physics: None,
+            physics: Some(EntityCreationPhysicsData {
+                is_dynamic: false,
+            }),
             mesh: object::flat_polyline(g.clone(), 50.0, [0.5, 1.0, 0.5, 1.0]),
             isometry: Isometry3::identity(),
         },

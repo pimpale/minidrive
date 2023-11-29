@@ -34,8 +34,6 @@ use crate::shader;
 use crate::vertex::mVertex;
 
 pub struct EntityCreationPhysicsData {
-    // describes the dimensions of the object (aligned with the mesh)
-    pub hitbox: Vector3<f32>,
     // if true, the object can be moved by the physics engine
     // if false, then the object will not move due to forces. If hitbox is specified, it can still be collided with
     pub is_dynamic: bool,
@@ -103,6 +101,8 @@ pub struct GameWorld {
     per_window_state: Option<PerWindowState>,
     // per device vulkan objects
     per_device_state: PerDeviceState,
+    // handle user input
+    user_input_state: UserInputState,
 }
 
 pub struct InteractiveRenderingConfig {
@@ -176,6 +176,7 @@ impl GameWorld {
             ccd_solver: CCDSolver::new(),
             per_device_state,
             per_window_state,
+            user_input_state: UserInputState::new(),
         }
     }
 
@@ -216,6 +217,33 @@ impl GameWorld {
             }
         }
 
+        // update the entity that the camera is tracking
+        if let Some(ref mut per_window_state) = self.per_window_state {
+            if let Some(Entity {
+                rigid_body_handle: Some(handle),
+                isometry,
+                ..
+            }) = self.entities.get(&per_window_state.entity_id)
+            {
+                let impulse = if self.user_input_state.w {
+                    Vector3::new(0.0, 0.0, 1.0)
+                } else if self.user_input_state.s {
+                    Vector3::new(0.0, 0.0, -1.0)
+                } else {
+                    Vector3::new(0.0, 0.0, 0.0)
+                };
+                let torque_impulse = if self.user_input_state.a {
+                    Vector3::new(0.0, -1.0, 0.0)
+                } else if self.user_input_state.d {
+                    Vector3::new(0.0, 1.0, 0.0)
+                } else {
+                    Vector3::new(0.0, 0.0, 0.0)
+                }; 
+                self.rigid_body_set[*handle].apply_impulse((isometry.rotation*impulse)*0.09, true);
+                self.rigid_body_set[*handle].apply_torque_impulse(torque_impulse*0.01, true)
+            }
+        }
+
         // update camera (if necessary)
         if let Some(ref mut per_window_state) = self.per_window_state {
             if let Some(entity) = self.entities.get(&per_window_state.entity_id) {
@@ -223,6 +251,9 @@ impl GameWorld {
                 per_window_state
                     .camera
                     .set_position(isometry.translation.vector.into());
+                per_window_state
+                    .camera
+                    .set_rotation(isometry.rotation.into());
                 per_window_state.camera.update();
             }
         }
@@ -238,7 +269,9 @@ impl GameWorld {
 
         // add to physics solver if necessary
         let (scene, rigid_body_handle) = match physics {
-            Some(EntityCreationPhysicsData { hitbox, is_dynamic }) => {
+            Some(EntityCreationPhysicsData { is_dynamic }) => {
+                // cuboid constructor uses "half-extents", which is just half of the cuboid's width, height, and depth
+                let hitbox = object::get_aabb(&mesh)/2.0;
                 let rigid_body = match is_dynamic {
                     true => RigidBodyBuilder::dynamic(),
                     false => RigidBodyBuilder::fixed(),
@@ -249,7 +282,7 @@ impl GameWorld {
                 let collider = ColliderBuilder::cuboid(hitbox.x, hitbox.y, hitbox.z).build();
 
                 let rigid_body_handle = self.rigid_body_set.insert(rigid_body);
-                let collider_handle = self.collider_set.insert_with_parent(
+                self.collider_set.insert_with_parent(
                     collider,
                     rigid_body_handle,
                     &mut self.rigid_body_set,
@@ -314,6 +347,7 @@ impl GameWorld {
     }
 
     pub fn handle_window_event(&mut self, input: &winit::event::WindowEvent) {
+        self.user_input_state.handle_input(input);
         match self.per_window_state {
             Some(ref mut per_window_state) => {
                 per_window_state.camera.handle_event(

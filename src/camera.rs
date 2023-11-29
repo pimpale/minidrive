@@ -37,6 +37,7 @@ impl DirVecs {
 pub trait Camera {
     fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32>;
     fn set_position(&mut self, pos: Point3<f32>);
+    fn set_rotation(&mut self, rot: UnitQuaternion<f32>);
 }
 
 fn gen_perspective_projection(extent: [u32; 2]) -> Matrix4<f32> {
@@ -89,6 +90,10 @@ impl Camera for PerspectiveCamera {
 
     fn set_position(&mut self, pos: Point3<f32>) {
         self.pos = pos;
+    }
+
+    fn set_rotation(&mut self, rot: UnitQuaternion<f32>) {
+        // do nothing
     }
 }
 
@@ -143,6 +148,10 @@ impl Camera for OrthographicCamera {
     fn set_position(&mut self, pos: Point3<f32>) {
         self.pos = pos;
     }
+
+    fn set_rotation(&mut self, rot: UnitQuaternion<f32>) {
+        // do nothing
+    }
 }
 
 pub trait InteractiveCamera: Camera {
@@ -154,6 +163,8 @@ pub trait InteractiveCamera: Camera {
 pub struct SphericalCamera {
     // position of the camera's root point
     root_pos: Point3<f32>,
+    // rotation of the camera's root point
+    root_rot: UnitQuaternion<f32>,
     // world up
     worldup: Vector3<f32>,
     // offset from the root position
@@ -174,6 +185,7 @@ impl SphericalCamera {
     pub fn new(pos: Point3<f32>) -> SphericalCamera {
         SphericalCamera {
             root_pos: pos,
+            root_rot: UnitQuaternion::identity(),
             worldup: Vector3::new(0.0, -1.0, 0.0),
             pitch: 0.0,
             yaw: deg2rad(-90.0),
@@ -196,12 +208,16 @@ impl Camera for SphericalCamera {
     fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
         let dirs = DirVecs::new(self.worldup, self.pitch, self.yaw);
         let projection = gen_perspective_projection(extent);
-        let view = Matrix4::look_at_rh(&(self.root_pos + self.offset*dirs.front), &self.root_pos, &self.worldup);
+        let view = Matrix4::look_at_rh(&(self.root_pos + self.offset*(self.root_rot*dirs.front)), &self.root_pos, &self.worldup);
         projection * view
     }
 
     fn set_position(&mut self, pos: Point3<f32>) {
         self.root_pos = pos;
+    }
+
+    fn set_rotation(&mut self, rot: UnitQuaternion<f32>) {
+        self.root_rot = rot;
     }
 }
 

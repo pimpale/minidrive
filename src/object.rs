@@ -129,7 +129,7 @@ pub fn transform(vec: &Vec<Vertex>, isometry: &Isometry3<f32>) -> Vec<Vertex> {
 }
 
 // get axis aligned bounding box
-pub fn get_aabb(obj: Vec<Vertex>) -> Vector3<f32> {
+pub fn get_aabb(obj: &[Vertex]) -> Vector3<f32> {
     let mut min = Vector3::new(std::f32::MAX, std::f32::MAX, std::f32::MAX);
     let mut max = Vector3::new(std::f32::MIN, std::f32::MIN, std::f32::MIN);
     for v in obj.iter() {
