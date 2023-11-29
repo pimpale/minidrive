@@ -158,28 +158,16 @@ pub struct SphericalCamera {
     worldup: Vector3<f32>,
     // offset from the root position
     offset: f32,
+    // pitch
+    pitch: f32,
+    // yaw
+    yaw: f32,
 
     // contains mouse data (if being dragged)
     mouse_down: bool,
     mouse_start: Point2<f32>,
     mouse_prev: Point2<f32>,
     mouse_curr: Point2<f32>,
-
-    // how much to damp the rotation at each step
-    damping_factor: f32,
-
-    // the following two quaternions are multiplied together to produce the
-    // real rotation
-
-    // the base orientation of the object
-    base_q: UnitQuaternion<f32>,
-    // the rotation added by the mouse (generated each frame)
-    curr_q: UnitQuaternion<f32>,
-    // the rotation used for momentum
-    momentum_q: UnitQuaternion<f32>,
-
-    // momentumMagnitude is the magnitude of the momentum vector
-    momentum_magnitude: f32,
 }
 
 impl SphericalCamera {
@@ -187,31 +175,14 @@ impl SphericalCamera {
         SphericalCamera {
             root_pos: pos,
             worldup: Vector3::new(0.0, -1.0, 0.0),
+            pitch: 0.0,
+            yaw: deg2rad(-90.0),
             offset: 3.0,
-            damping_factor: 0.9,
             mouse_down: false,
             mouse_start: Default::default(),
             mouse_prev: Default::default(),
             mouse_curr: Default::default(),
-            base_q: UnitQuaternion::identity(),
-            curr_q: UnitQuaternion::identity(),
-            momentum_q: UnitQuaternion::identity(),
-            momentum_magnitude: 0.0,
         }
-    }
-
-    fn project_trackball(p: &Point2<f32>) -> Vector3<f32> {
-        let (x, y) = (p.x, -p.y);
-
-        let r = 1.0;
-
-        let z = if x * x + y * y <= r * r / 2.0 {
-            f32::sqrt(r * r - (x * x) - (y * y))
-        } else {
-            (r * r / 2.0) / f32::sqrt(x * x + y * y)
-        };
-
-        return Vector3::new(x, -y, z);
     }
 
     fn get_normalized_mouse_coords(e: Point2<f32>, extent: [u32; 2]) -> Point2<f32> {
@@ -223,12 +194,10 @@ impl SphericalCamera {
 
 impl Camera for SphericalCamera {
     fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
-        let rot = self.curr_q * self.base_q;
-        let model =
-            Matrix4::new_translation(&(self.root_pos.coords + rot * Vector3::new(2.0, 0.0, 0.0)));
-        let view = Matrix4::from(rot);
+        let dirs = DirVecs::new(self.worldup, self.pitch, self.yaw);
         let projection = gen_perspective_projection(extent);
-        projection * view * model
+        let view = Matrix4::look_at_rh(&(self.root_pos + self.offset*dirs.front), &self.root_pos, &self.worldup);
+        projection * view
     }
 
     fn set_position(&mut self, pos: Point3<f32>) {
@@ -238,12 +207,7 @@ impl Camera for SphericalCamera {
 
 impl InteractiveCamera for SphericalCamera {
     fn update(&mut self) {
-        if !self.mouse_down {
-            let combined_q =
-                UnitQuaternion::identity().slerp(&self.momentum_q, self.momentum_magnitude);
-            self.momentum_magnitude *= self.damping_factor;
-            self.base_q = combined_q * self.base_q;
-        }
+        // do nothing
     }
 
     fn handle_event(&mut self, extent: [u32; 2], event: &winit::event::WindowEvent) {
@@ -265,10 +229,14 @@ impl InteractiveCamera for SphericalCamera {
                 );
                 if self.mouse_down {
                     // current and past
-                    let curr_t = Self::project_trackball(&self.mouse_curr).normalize();
-                    let start_t = Self::project_trackball(&self.mouse_start).normalize();
+                    self.yaw -= (self.mouse_curr.x - self.mouse_prev.x) * 2.0;
+                    self.pitch += (self.mouse_curr.y - self.mouse_prev.y) * 2.0;
 
-                    self.curr_q = UnitQuaternion::rotation_between(&curr_t, &start_t).unwrap();
+                    if self.pitch > deg2rad(89.0) {
+                        self.pitch = deg2rad(89.0);
+                    } else if self.pitch < -deg2rad(89.0) {
+                        self.pitch = -deg2rad(89.0);
+                    }
                 }
             }
             // mouse up
@@ -276,21 +244,19 @@ impl InteractiveCamera for SphericalCamera {
                 state: ElementState::Released,
                 ..
             } => {
-                if self.mouse_down {
-                    let curr = Self::project_trackball(&self.mouse_curr).normalize();
-                    let prev = Self::project_trackball(&self.mouse_prev).normalize();
-                    // create momentum (for less jerky camera movements)
-                    self.momentum_q =
-                        UnitQuaternion::rotation_between(&curr, &prev).unwrap_or_default();
-                    self.momentum_magnitude = 1.0;
-
-                    // set the base rotation our rotation that we were thinking about
-                    self.base_q = self.curr_q * self.base_q;
-
-                    // reset the current rotation
-                    self.curr_q = UnitQuaternion::identity();
-                }
                 self.mouse_down = false;
+            }
+            // scroll
+            winit::event::WindowEvent::MouseWheel { delta, .. } => {
+                match delta {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => {
+                        self.offset -= 0.1*y;
+                        if self.offset < 0.5 {
+                            self.offset = 0.5;
+                        }
+                    }
+                    winit::event::MouseScrollDelta::PixelDelta(_) => {}
+                }
             }
             _ => {}
         }
