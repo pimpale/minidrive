@@ -92,7 +92,7 @@ fn build_scene(
         Some(InteractiveRenderingConfig {
             surface,
             tracking_entity: 0,
-            camera: Box::new(camera::SphericalCamera::new(Point3::new(0.0, 0.0, -1.0))),
+            camera: Box::new(camera::SphericalCamera::new()),
         }),
     );
 

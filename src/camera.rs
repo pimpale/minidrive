@@ -97,13 +97,19 @@ impl Camera for PerspectiveCamera {
     }
 }
 
+// Converts a space with depth values in the range [-1, 1] to a space with depth values in the range [0, 1] 
+// keeps the x and y values the same
+fn vk_depth_correction() -> Matrix4<f32> {
+    Matrix4::new_nonuniform_scaling(&Vector3::new(1.0, 1.0, 0.5)) * Matrix4::new_translation(&Vector3::new(0.0, 0.0, 1.0))
+}
+
 fn gen_orthographic_projection([screen_x, screen_y]: [u32; 2]) -> Matrix4<f32> {
     let scale = 160.0;
     let left = -(screen_x as f32) / scale;
     let right = screen_x as f32 / scale;
     let bottom = -(screen_y as f32) / scale;
     let top = screen_y as f32 / scale;
-    Matrix4::new_orthographic(left, right, bottom, top, -2000.0, 2000.0)
+    vk_depth_correction() * Matrix4::new_orthographic(left, right, bottom, top, -200.0, 200.0)
 }
 
 #[derive(Clone, Debug)]
@@ -182,13 +188,13 @@ pub struct SphericalCamera {
 }
 
 impl SphericalCamera {
-    pub fn new(pos: Point3<f32>) -> SphericalCamera {
+    pub fn new() -> SphericalCamera {
         SphericalCamera {
-            root_pos: pos,
+            root_pos: Point3::default(),
             root_rot: UnitQuaternion::identity(),
-            worldup: Vector3::new(0.0, -1.0, 0.0),
+            worldup: Vector3::new(0.0, 1.0, 0.0),
             pitch: 0.0,
-            yaw: deg2rad(-90.0),
+            yaw: 0.0,
             offset: 3.0,
             mouse_down: false,
             mouse_start: Default::default(),
@@ -207,8 +213,9 @@ impl SphericalCamera {
 impl Camera for SphericalCamera {
     fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
         let dirs = DirVecs::new(self.worldup, self.pitch, self.yaw);
-        let projection = gen_perspective_projection(extent);
-        let view = Matrix4::look_at_rh(&(self.root_pos + self.offset*(self.root_rot*dirs.front)), &self.root_pos, &self.worldup);
+        //let projection = gen_perspective_projection(extent);
+        let projection = gen_orthographic_projection(extent);
+        let view = Matrix4::look_at_rh(&(self.root_pos - self.offset*(self.root_rot*dirs.front)), &self.root_pos, &-self.worldup);
         projection * view
     }
 
@@ -246,13 +253,18 @@ impl InteractiveCamera for SphericalCamera {
                 if self.mouse_down {
                     // current and past
                     self.yaw -= (self.mouse_curr.x - self.mouse_prev.x) * 2.0;
-                    self.pitch += (self.mouse_curr.y - self.mouse_prev.y) * 2.0;
+                    self.pitch -= (self.mouse_curr.y - self.mouse_prev.y) * 2.0;
 
                     if self.pitch > deg2rad(89.0) {
                         self.pitch = deg2rad(89.0);
                     } else if self.pitch < -deg2rad(89.0) {
                         self.pitch = -deg2rad(89.0);
                     }
+                    println!("pitch: {}", self.pitch);
+                    println!("yaw: {}", self.yaw);
+                    let dirs = DirVecs::new(self.worldup, self.pitch, self.yaw);
+                    println!("campos: {}", self.root_pos - self.offset*(self.root_rot*dirs.front));
+
                 }
             }
             // mouse up
@@ -270,6 +282,7 @@ impl InteractiveCamera for SphericalCamera {
                         if self.offset < 0.5 {
                             self.offset = 0.5;
                         }
+                        println!("offset: {}", self.offset);
                     }
                     winit::event::MouseScrollDelta::PixelDelta(_) => {}
                 }
