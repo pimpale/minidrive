@@ -257,6 +257,10 @@ impl<T> Renderer<T> {
         }
     }
 
+    pub fn extent(&self) -> [u32; 2] {
+        self.extent
+    }
+
     pub fn render<Pc, VB>(&mut self, vertex_buffers: VB, push_data: Pc)
     where
         Pc: BufferContents,
@@ -341,7 +345,7 @@ impl<T> Renderer<T> {
         }
     }
 
-    fn get_image_data(&mut self) -> Vec<u8> {
+    pub fn get_image(&mut self) -> Vec<u8> {
         self.previous_frame_end
             .as_mut()
             .unwrap()

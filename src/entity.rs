@@ -23,6 +23,7 @@ use vulkano::memory::allocator::StandardMemoryAllocator;
 use vulkano::shader::EntryPoint;
 use vulkano::swapchain::Surface;
 
+use crate::camera;
 use crate::camera::Camera;
 use crate::camera::InteractiveCamera;
 use crate::handle_user_input::UserInputState;
@@ -39,9 +40,14 @@ pub struct EntityCreationPhysicsData {
     pub is_dynamic: bool,
 }
 
+pub struct EntityCreationCameraData {
+    pub camera: Box<dyn Camera>,
+    pub extent: [u32; 2],
+}
+
 pub struct EntityCreationData {
     // gather data
-    pub cameras: Vec<Box<dyn Camera>>,
+    pub cameras: Vec<EntityCreationCameraData>,
     // if not specified then the object is visual only
     pub physics: Option<EntityCreationPhysicsData>,
     // mesh (untransformed)
@@ -180,7 +186,7 @@ impl GameWorld {
         }
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self) -> HashMap<u32, Vec<Vec<u8>>> {
         // step physics
         self.physics_pipeline.step(
             &Vector3::new(0.0, -9.81, 0.0),
@@ -226,9 +232,9 @@ impl GameWorld {
             }) = self.entities.get(&per_window_state.entity_id)
             {
                 let impulse = if self.user_input_state.w {
-                    Vector3::new(0.0, 0.0, 1.0)
+                    Vector3::new(1.0, 0.0, 0.0)
                 } else if self.user_input_state.s {
-                    Vector3::new(0.0, 0.0, -1.0)
+                    Vector3::new(-1.0, 0.0, 0.0)
                 } else {
                     Vector3::new(0.0, 0.0, 0.0)
                 };
@@ -238,13 +244,40 @@ impl GameWorld {
                     Vector3::new(0.0, 1.0, 0.0)
                 } else {
                     Vector3::new(0.0, 0.0, 0.0)
-                }; 
-                self.rigid_body_set[*handle].apply_impulse((isometry.rotation*impulse)*0.09, true);
-                self.rigid_body_set[*handle].apply_torque_impulse(torque_impulse*0.01, true)
+                };
+                self.rigid_body_set[*handle]
+                    .apply_impulse((isometry.rotation * impulse) * 0.09, true);
+                self.rigid_body_set[*handle].apply_torque_impulse(torque_impulse * 0.01, true)
             }
         }
 
-        // update camera (if necessary)
+        // update cameras and start offscreen rendering process for each of the entities that requires it
+        for (_, entity) in self.entities.iter_mut() {
+            for per_camera_data in entity.cameras.iter_mut() {
+                // update camera position
+                per_camera_data
+                    .camera
+                    .set_position(entity.isometry.translation.vector.into());
+                per_camera_data
+                    .camera
+                    .set_rotation(entity.isometry.rotation.into());
+
+                // start rendering
+                let extent = per_camera_data.renderer.extent();
+                let push_data = shader::vert::PushConstantData {
+                    mvp: per_camera_data.camera.mvp(extent).into(),
+                };
+                let vertex_buffers = [
+                    self.dynamic_scene.vertex_buffer(),
+                    self.static_scene.vertex_buffer(),
+                ]
+                .into_iter()
+                .flatten();
+                per_camera_data.renderer.render(vertex_buffers, push_data);
+            }
+        }
+
+        // update per-window interactive cameras (if necessary)
         if let Some(ref mut per_window_state) = self.per_window_state {
             if let Some(entity) = self.entities.get(&per_window_state.entity_id) {
                 let isometry = entity.isometry;
@@ -257,6 +290,21 @@ impl GameWorld {
                 per_window_state.camera.update();
             }
         }
+
+        // get observations for each entity
+        self.entities
+            .iter_mut()
+            .map(|(&entity_id, entity)| {
+                (
+                    entity_id,
+                    entity
+                        .cameras
+                        .iter_mut()
+                        .map(|per_camera_data| per_camera_data.renderer.get_image())
+                        .collect(),
+                )
+            })
+            .collect()
     }
 
     pub fn add_entity(&mut self, entity_id: u32, entity_creation_data: EntityCreationData) {
@@ -271,7 +319,7 @@ impl GameWorld {
         let (scene, rigid_body_handle) = match physics {
             Some(EntityCreationPhysicsData { is_dynamic }) => {
                 // cuboid constructor uses "half-extents", which is just half of the cuboid's width, height, and depth
-                let hitbox = object::get_aabb(&mesh)/2.0;
+                let hitbox = object::get_aabb(&mesh) / 2.0;
                 let rigid_body = match is_dynamic {
                     true => RigidBodyBuilder::dynamic(),
                     false => RigidBodyBuilder::fixed(),
@@ -296,11 +344,27 @@ impl GameWorld {
         // add mesh to scene
         scene.add_object(entity_id, object::transform(&mesh, &isometry));
 
+        // create renderers
+        let cameras = cameras
+            .into_iter()
+            .map(|EntityCreationCameraData { camera, extent }| {
+                let renderer = offscreen_rendering::Renderer::new(
+                    extent,
+                    vec![
+                        self.per_device_state.vs.clone(),
+                        self.per_device_state.fs.clone(),
+                    ],
+                    self.per_device_state.queue.clone(),
+                    self.per_device_state.memory_allocator.clone(),
+                );
+                PerCameraData { camera, renderer }
+            })
+            .collect();
+
         self.entities.insert(
             entity_id,
             Entity {
-                // TODO: initialize cameras
-                cameras: vec![],
+                cameras,
                 rigid_body_handle,
                 mesh,
                 isometry,
@@ -308,6 +372,8 @@ impl GameWorld {
         );
     }
 
+    /// render to screen (if interactive rendering is enabled)
+    /// Note that all offscreen rendering is done during `step`
     pub fn render(&mut self) {
         if let Some(ref mut per_window_state) = self.per_window_state {
             let extent = interactive_rendering::get_surface_extent(&per_window_state.surface);

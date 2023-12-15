@@ -3,8 +3,7 @@ use nalgebra::{
 };
 use winit::event::ElementState;
 
-use crate::handle_user_input::UserInputState;
-
+#[inline]
 fn deg2rad(deg: f32) -> f32 {
     deg * std::f32::consts::PI / 180.0
 }
@@ -51,7 +50,7 @@ fn vk_depth_correction() -> Matrix4<f32> {
 
 #[allow(dead_code)]
 fn gen_orthographic_projection([screen_x, screen_y]: [u32; 2]) -> Matrix4<f32> {
-    let scale = 160.0;
+    let scale = 100.0;
     let left = -(screen_x as f32) / scale;
     let right = screen_x as f32 / scale;
     let bottom = -(screen_y as f32) / scale;
@@ -191,5 +190,54 @@ impl InteractiveCamera for SphericalCamera {
             }
             _ => {}
         }
+    }
+}
+
+
+/// bird's eye view camera: orthographic projection, pitch of -90 degrees
+pub struct BEVCamera {
+        // position of the camera's root point
+        root_pos: Point3<f32>,
+        // rotation of the camera's root point
+        root_rot: UnitQuaternion<f32>,
+        // offset from the root position
+        offset: f32,
+}
+
+impl BEVCamera {
+    pub fn new() -> BEVCamera {
+        BEVCamera {
+            root_pos: Point3::default(),
+            root_rot: UnitQuaternion::identity(),
+            offset: 3.0,
+        }
+    }
+}
+
+impl Camera for BEVCamera {
+    fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
+        let front = Vector3::new(-1.0, 0.0, 0.0);
+        let worldup = self.root_rot * front;
+        let projection = gen_orthographic_projection(extent);
+        let view = Matrix4::look_at_rh(&(self.root_pos + Vector3::new(0.0, self.offset, 0.0)), &self.root_pos, &worldup);
+        projection * view
+    }
+
+    fn set_position(&mut self, pos: Point3<f32>) {
+        self.root_pos = pos;
+    }
+
+    fn set_rotation(&mut self, rot: UnitQuaternion<f32>) {
+        self.root_rot = rot;
+    }
+}
+
+impl InteractiveCamera for BEVCamera {
+    fn update(&mut self) {
+        // do nothing
+    }
+
+    fn handle_event(&mut self, _extent: [u32; 2], _input: &winit::event::WindowEvent) {
+        // do nothing
     }
 }
