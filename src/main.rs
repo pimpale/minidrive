@@ -1,4 +1,6 @@
-use entity::{EntityCreationData, GameWorld, InteractiveRenderingConfig, EntityCreationPhysicsData};
+use entity::{
+    EntityCreationData, EntityCreationPhysicsData, GameWorld, InteractiveRenderingConfig, EntityCreationCameraData,
+};
 use nalgebra::{Isometry, Isometry3, Point3, Vector3};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -85,7 +87,6 @@ fn build_scene(
 
     let g = vec![[0.0, -0.1, -50.0].into(), [0.0, -0.1, 50.0].into()];
 
-
     let mut world = GameWorld::new(
         queue,
         memory_allocator,
@@ -100,12 +101,13 @@ fn build_scene(
     world.add_entity(
         0,
         EntityCreationData {
-            cameras: vec![],
-            physics: Some(EntityCreationPhysicsData {
-                is_dynamic: true,
-            }),
+            cameras: vec![EntityCreationCameraData {
+                camera: Box::new(camera::BEVCamera::new()),
+                extent: [128, 128]
+            }],
+            physics: Some(EntityCreationPhysicsData { is_dynamic: true }),
             mesh: object::unitcube(),
-            isometry: Isometry3::translation(0.0, 5.0, 0.0)
+            isometry: Isometry3::translation(0.0, 5.0, 0.0),
         },
     );
 
@@ -140,14 +142,12 @@ fn build_scene(
         3,
         EntityCreationData {
             cameras: vec![],
-            physics: Some(EntityCreationPhysicsData {
-                is_dynamic: false,
-            }),
+            physics: Some(EntityCreationPhysicsData { is_dynamic: false }),
             mesh: object::flat_polyline(g.clone(), 50.0, [0.5, 1.0, 0.5, 1.0]),
             isometry: Isometry3::identity(),
         },
     );
-    
+
     world
 }
 
@@ -210,7 +210,8 @@ fn main() {
             }
 
             // game step and render
-            world.step();
+            let observations = world.step();
+
             world.render();
         }
         _ => (),

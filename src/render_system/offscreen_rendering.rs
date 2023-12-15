@@ -28,9 +28,11 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::{spirv::ExecutionModel, EntryPoint},
-    sync::{self, future::FenceSignalFuture, GpuFuture},
+    sync::{future::FenceSignalFuture, GpuFuture},
     Validated,
 };
+
+use crate::render_system::queued_now_future;
 
 fn construct_offscreen_pipeline(
     memory_allocator: Arc<StandardMemoryAllocator>,
@@ -243,7 +245,7 @@ impl<T> Renderer<T> {
                 device.clone(),
                 Default::default(),
             )),
-            previous_frame_end: Some(sync::now(device.clone()).boxed().then_signal_fence()),
+            previous_frame_end: Some(queued_now_future::now(queue.clone()).boxed().then_signal_fence()),
             device,
             queue,
             pipeline,
@@ -340,7 +342,7 @@ impl<T> Renderer<T> {
             Err(e) => {
                 println!("failed to flush future: {e}");
                 self.previous_frame_end =
-                    Some(sync::now(self.device.clone()).boxed().then_signal_fence());
+                    Some(queued_now_future::now(self.queue.clone()).boxed().then_signal_fence());
             }
         }
     }
