@@ -287,7 +287,6 @@ impl<T> Renderer<T> {
         )
         .unwrap();
 
-        // Finish building the command buffer by calling `build`.
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
@@ -311,9 +310,7 @@ impl<T> Renderer<T> {
                 .draw(vertex_count, 1, 0, 0)
                 .unwrap();
         }
-        // We leave the render pass by calling `draw_end`. Note that if we had multiple
-        // subpasses we could have called `next_inline` (or `next_secondary`) to jump to the
-        // next subpass.
+
         builder.end_render_pass(Default::default()).unwrap();
 
         // we now copy the results of the render to the staging buffer
@@ -348,11 +345,13 @@ impl<T> Renderer<T> {
     }
 
     pub fn get_image(&mut self) -> Vec<u8> {
+        // wait for fence to be signaled
         self.previous_frame_end
             .as_mut()
             .unwrap()
             .wait(None)
             .unwrap();
+        // read the staging buffer
         self.staging_buffer.read().unwrap().to_vec()
     }
 }
