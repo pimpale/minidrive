@@ -34,12 +34,6 @@ impl DirVecs {
     }
 }
 
-pub trait Camera {
-    fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32>;
-    fn set_position(&mut self, pos: Point3<f32>);
-    fn set_rotation(&mut self, rot: UnitQuaternion<f32>);
-}
-
 fn gen_perspective_projection(extent: [u32; 2]) -> Matrix4<f32> {
     let [screen_x, screen_y] = extent;
     let aspect_ratio = screen_x as f32 / screen_y as f32;
@@ -49,71 +43,13 @@ fn gen_perspective_projection(extent: [u32; 2]) -> Matrix4<f32> {
     Matrix4::new_perspective(aspect_ratio, fov, near, far)
 }
 
-#[derive(Clone, Debug)]
-pub struct PerspectiveCamera {
-    // global camera position
-    pos: Point3<f32>,
-    // the global up
-    worldup: Vector3<f32>,
-
-    // pitch and yaw values
-    pitch: f32,
-    yaw: f32,
-
-    // relative directions
-    dirs: DirVecs,
-
-    // contains mouse data (if being dragged)
-    mouse_down: bool,
-    mouse_start: Point2<f32>,
-    mouse_prev: Point2<f32>,
-    mouse_curr: Point2<f32>,
-}
-
-impl PerspectiveCamera {
-    pub fn new(pos: Point3<f32>) -> PerspectiveCamera {
-        let pitch = 0.0;
-        let yaw = deg2rad(-90.0);
-
-        let worldup = Vector3::new(0.0, 1.0, 0.0);
-
-        PerspectiveCamera {
-            pos,
-            worldup,
-            pitch,
-            yaw,
-            dirs: DirVecs::new(worldup, pitch, yaw),
-            // default mouse values
-            mouse_down: false,
-            mouse_start: Default::default(),
-            mouse_prev: Default::default(),
-            mouse_curr: Default::default(),
-        }
-    }
-}
-
-impl Camera for PerspectiveCamera {
-    fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
-        let projection = gen_perspective_projection(extent);
-        let view = Matrix4::look_at_rh(&self.pos, &(self.pos - self.dirs.front), &self.worldup);
-        projection * view
-    }
-
-    fn set_position(&mut self, pos: Point3<f32>) {
-        self.pos = pos;
-    }
-
-    fn set_rotation(&mut self, rot: UnitQuaternion<f32>) {
-        // do nothing
-    }
-}
-
 // Converts a space with depth values in the range [-1, 1] to a space with depth values in the range [0, 1] 
 // keeps the x and y values the same
 fn vk_depth_correction() -> Matrix4<f32> {
     Matrix4::new_nonuniform_scaling(&Vector3::new(1.0, 1.0, 0.5)) * Matrix4::new_translation(&Vector3::new(0.0, 0.0, 1.0))
 }
 
+#[allow(dead_code)]
 fn gen_orthographic_projection([screen_x, screen_y]: [u32; 2]) -> Matrix4<f32> {
     let scale = 160.0;
     let left = -(screen_x as f32) / scale;
@@ -123,53 +59,12 @@ fn gen_orthographic_projection([screen_x, screen_y]: [u32; 2]) -> Matrix4<f32> {
     vk_depth_correction() * Matrix4::new_orthographic(left, right, bottom, top, -200.0, 200.0)
 }
 
-#[derive(Clone, Debug)]
-pub struct OrthographicCamera {
-    // pitch and yaw values
-    pitch: f32,
-    yaw: f32,
-
-    // global camera position
-    pos: Point3<f32>,
-    // the global up
-    worldup: Vector3<f32>,
-
-    // relative directions
-    dirs: DirVecs,
+pub trait Camera {
+    fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32>;
+    fn set_position(&mut self, pos: Point3<f32>);
+    fn set_rotation(&mut self, rot: UnitQuaternion<f32>);
 }
 
-impl OrthographicCamera {
-    pub fn new(pos: Point3<f32>) -> OrthographicCamera {
-        let pitch = 0.0;
-        let yaw = deg2rad(-90.0);
-
-        let worldup = Vector3::new(0.0, -1.0, 0.0);
-
-        OrthographicCamera {
-            pos,
-            worldup,
-            pitch,
-            yaw,
-            dirs: DirVecs::new(worldup, pitch, yaw),
-        }
-    }
-}
-
-impl Camera for OrthographicCamera {
-    fn mvp(&self, extent: [u32; 2]) -> Matrix4<f32> {
-        let projection = gen_orthographic_projection(extent);
-        let view = Matrix4::look_at_rh(&self.pos, &(self.pos - self.dirs.front), &self.worldup);
-        projection * view
-    }
-
-    fn set_position(&mut self, pos: Point3<f32>) {
-        self.pos = pos;
-    }
-
-    fn set_rotation(&mut self, rot: UnitQuaternion<f32>) {
-        // do nothing
-    }
-}
 
 pub trait InteractiveCamera: Camera {
     fn update(&mut self);
@@ -209,7 +104,7 @@ impl SphericalCamera {
         SphericalCamera {
             root_pos: Point3::default(),
             root_rot: UnitQuaternion::identity(),
-            worldup: Vector3::new(0.0, 1.0, 0.0),
+            worldup: Vector3::new(0.0, -1.0, 0.0),
             pitch: 0.0,
             yaw: 0.0,
             offset: 3.0,
@@ -258,7 +153,7 @@ impl InteractiveCamera for SphericalCamera {
             // cursor move
             winit::event::WindowEvent::CursorMoved { position, .. } => {
                 self.mouse_prev = self.mouse_curr;
-                self.mouse_curr = Self::get_normalized_mouse_coords(
+                self.mouse_curr = get_normalized_mouse_coords(
                     Point2::new(position.x as f32, position.y as f32),
                     extent,
                 );
@@ -272,75 +167,6 @@ impl InteractiveCamera for SphericalCamera {
                     } else if self.pitch < -deg2rad(89.0) {
                         self.pitch = -deg2rad(89.0);
                     }
-                    println!("pitch: {}", self.pitch);
-                    println!("yaw: {}", self.yaw);
-                    let dirs = DirVecs::new(self.worldup, self.pitch, self.yaw);
-                    println!("campos: {}", self.root_pos - self.offset*(self.root_rot*dirs.front));
-
-                }
-            }
-            // mouse up
-            winit::event::WindowEvent::MouseInput {
-                state: ElementState::Released,
-                ..
-            } => {
-                self.mouse_down = false;
-            }
-            // scroll
-            winit::event::WindowEvent::MouseWheel { delta, .. } => {
-                match delta {
-                    winit::event::MouseScrollDelta::LineDelta(_, y) => {
-                        self.offset -= 0.1*y;
-                        if self.offset < 0.5 {
-                            self.offset = 0.5;
-                        }
-                        println!("offset: {}", self.offset);
-                    }
-                    winit::event::MouseScrollDelta::PixelDelta(_) => {}
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-impl InteractiveCamera for PerspectiveCamera {
-    fn update(&mut self) {
-        // do nothing
-    }
-
-    fn handle_event(&mut self, extent: [u32; 2], event: &winit::event::WindowEvent) {
-        match event {
-            // mouse down
-            winit::event::WindowEvent::MouseInput {
-                state: ElementState::Pressed,
-                ..
-            } => {
-                self.mouse_down = true;
-                self.mouse_start = self.mouse_curr;
-            }
-            // cursor move
-            winit::event::WindowEvent::CursorMoved { position, .. } => {
-                self.mouse_prev = self.mouse_curr;
-                self.mouse_curr = Self::get_normalized_mouse_coords(
-                    Point2::new(position.x as f32, position.y as f32),
-                    extent,
-                );
-                if self.mouse_down {
-                    // current and past
-                    self.yaw -= (self.mouse_curr.x - self.mouse_prev.x) * 2.0;
-                    self.pitch -= (self.mouse_curr.y - self.mouse_prev.y) * 2.0;
-
-                    if self.pitch > deg2rad(89.0) {
-                        self.pitch = deg2rad(89.0);
-                    } else if self.pitch < -deg2rad(89.0) {
-                        self.pitch = -deg2rad(89.0);
-                    }
-                    println!("pitch: {}", self.pitch);
-                    println!("yaw: {}", self.yaw);
-                    let dirs = DirVecs::new(self.worldup, self.pitch, self.yaw);
-                    println!("campos: {}", self.root_pos - self.offset*(self.root_rot*dirs.front));
-
                 }
             }
             // mouse up
