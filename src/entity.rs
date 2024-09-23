@@ -11,11 +11,11 @@ use rapier3d::dynamics::MultibodyJointSet;
 use rapier3d::dynamics::RigidBodyBuilder;
 use rapier3d::dynamics::RigidBodyHandle;
 use rapier3d::dynamics::RigidBodySet;
-use rapier3d::geometry::BroadPhase;
 use rapier3d::geometry::ColliderBuilder;
 use rapier3d::geometry::ColliderSet;
 use rapier3d::geometry::NarrowPhase;
 use rapier3d::pipeline::PhysicsPipeline;
+use rapier3d::prelude::DefaultBroadPhase;
 use vulkano::buffer::Subbuffer;
 use vulkano::device::DeviceOwned;
 use vulkano::device::Queue;
@@ -98,7 +98,7 @@ pub struct GameWorld {
     collider_set: ColliderSet,
     physics_pipeline: PhysicsPipeline,
     island_manager: IslandManager,
-    broad_phase: BroadPhase,
+    broad_phase: DefaultBroadPhase,
     narrow_phase: NarrowPhase,
     impulse_joint_set: ImpulseJointSet,
     multibody_joint_set: MultibodyJointSet,
@@ -175,7 +175,7 @@ impl GameWorld {
             collider_set: ColliderSet::new(),
             physics_pipeline: PhysicsPipeline::new(),
             island_manager: IslandManager::new(),
-            broad_phase: BroadPhase::new(),
+            broad_phase: DefaultBroadPhase::new(),
             narrow_phase: NarrowPhase::new(),
             impulse_joint_set: ImpulseJointSet::new(),
             multibody_joint_set: MultibodyJointSet::new(),
@@ -218,7 +218,7 @@ impl GameWorld {
             };
 
             if new_isometry != &entity.isometry {
-                entity.isometry = new_isometry.clone();
+                entity.isometry = *new_isometry;
                 scene.add_object(entity_id, object::transform(&entity.mesh, &entity.isometry));
             }
         }
@@ -260,7 +260,7 @@ impl GameWorld {
                     .set_position(entity.isometry.translation.vector.into());
                 per_camera_data
                     .camera
-                    .set_rotation(entity.isometry.rotation.into());
+                    .set_rotation(entity.isometry.rotation);
 
                 // start rendering
                 let extent = per_camera_data.renderer.extent();
@@ -286,7 +286,7 @@ impl GameWorld {
                     .set_position(isometry.translation.vector.into());
                 per_window_state
                     .camera
-                    .set_rotation(isometry.rotation.into());
+                    .set_rotation(isometry.rotation);
                 per_window_state.camera.update();
             }
         }
